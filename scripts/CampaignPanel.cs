@@ -346,16 +346,14 @@ public partial class CampaignPanel : Panel
     /// </summary>
     private partial class TierGrid : Control
     {
-        // A press that moves more than this (px) is a scroll drag, not a
-        // level tap — lets touch-drag scroll even when it starts on a hex.
-        private const float TapSlopPx = 12f;
+        // A press that travels is a scroll drag, not a level tap — lets
+        // touch-drag scroll even when it starts on a hex.
+        private readonly TapSlopDetector _tap = new();
 
         private readonly CampaignPanel _panel;
         private readonly int _tier;
         private readonly int _columns;
         private Vector2 _pressLocal;
-        private Vector2 _pressGlobal;
-        private bool _pressed;
 
         // Scaled hex geometry, read from the owning panel.
         private float HexW => _panel._hexW;
@@ -446,13 +444,10 @@ public partial class CampaignPanel : Panel
             if (mb.Pressed)
             {
                 _pressLocal = mb.Position;
-                _pressGlobal = mb.GlobalPosition;
-                _pressed = true;
+                _tap.Press(mb.GlobalPosition.X, mb.GlobalPosition.Y);
                 return;
             }
-            if (!_pressed) return;
-            _pressed = false;
-            if (mb.GlobalPosition.DistanceTo(_pressGlobal) > TapSlopPx) return; // scroll, not tap
+            if (!_tap.Release(mb.GlobalPosition.X, mb.GlobalPosition.Y)) return; // scroll, not tap
 
             int? cell = CampaignGridMath.HitTest(
                 _pressLocal.X, _pressLocal.Y,

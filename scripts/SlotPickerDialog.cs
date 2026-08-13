@@ -485,7 +485,13 @@ public sealed partial class SlotPickerDialog : CanvasLayer
             scroll.HorizontalScrollMode = ScrollContainer.ScrollMode.Disabled;
         _body.AddChild(scroll);
 
-        var list = new VBoxContainer { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
+        // A tap loads the row outright here — there is no preview pane to
+        // select into and no Load button to arm.
+        var list = new RowList(this, index =>
+        {
+            HighlightRow(index);
+            _onPicked(_slots[index].SlotName);
+        });
         list.AddThemeConstantOverride("separation", 6);
         scroll.AddChild(list);
 
@@ -496,13 +502,12 @@ public sealed partial class SlotPickerDialog : CanvasLayer
             list.AddChild(MakeMessageLabel(_emptyMessage));
             return;
         }
-        // ToggleMode + a shared group purely for the highlight: a click still
-        // loads immediately (Pressed fires for toggle buttons too), so the
-        // pressed look only ever shows where the keyboard put the selection.
+        // ToggleMode + a shared group purely for the highlight; the rows take
+        // no input of their own (see RowList), so the pressed look only ever
+        // shows where the keyboard or a tap put the selection.
         var group = new ButtonGroup();
         foreach (SaveSlotInfo info in _slots)
         {
-            string capturedName = info.SlotName;
             var btn = new Button
             {
                 Text = _labelFor(info),
@@ -514,10 +519,11 @@ public sealed partial class SlotPickerDialog : CanvasLayer
                 // consume the arrows before _UnhandledInput sees them; the
                 // pressed highlight is the selection cue, not a focus ring.
                 FocusMode = Control.FocusModeEnum.None,
+                // Input belongs to the list, not the row: a row that consumed
+                // the touch would starve the ScrollContainer of the drag.
+                MouseFilter = Control.MouseFilterEnum.Ignore,
             };
             btn.AddThemeFontSizeOverride("font_size", 18);
-            btn.Pressed += () => _onPicked(capturedName);
-            AudioBus.AttachClick(btn);
             list.AddChild(btn);
             _rowButtons.Add(btn);
         }
@@ -573,7 +579,12 @@ public sealed partial class SlotPickerDialog : CanvasLayer
             SizeFlagsVertical = Control.SizeFlags.ExpandFill,
             HorizontalScrollMode = ScrollContainer.ScrollMode.Disabled,
         };
-        var list = new VBoxContainer { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
+        // A tap selects here: it swaps the preview and arms the Load button.
+        var list = new RowList(this, index =>
+        {
+            HighlightRow(index);
+            OnSlotSelected(_slots[index].SlotName);
+        });
         list.AddThemeConstantOverride("separation", 6);
         scroll.AddChild(list);
 
@@ -584,7 +595,6 @@ public sealed partial class SlotPickerDialog : CanvasLayer
         var group = new ButtonGroup();
         foreach (SaveSlotInfo info in _slots)
         {
-            string capturedName = info.SlotName;
             var btn = new Button
             {
                 Text = _labelFor(info),
@@ -593,11 +603,10 @@ public sealed partial class SlotPickerDialog : CanvasLayer
                 ToggleMode = true,
                 ButtonGroup = group,
                 FocusMode = Control.FocusModeEnum.None,  // see BuildTextOnlyBody
+                MouseFilter = Control.MouseFilterEnum.Ignore,  // ditto
             };
             btn.AddThemeFontSizeOverride("font_size", 17);
-            btn.Toggled += on => { if (on) OnSlotSelected(capturedName); };
-            AudioBus.AttachClick(btn);
-            if (capturedName == _selectedSlot) btn.SetPressedNoSignal(true);
+            if (info.SlotName == _selectedSlot) btn.SetPressedNoSignal(true);
             list.AddChild(btn);
             _rowButtons.Add(btn);
         }
@@ -672,6 +681,85 @@ public sealed partial class SlotPickerDialog : CanvasLayer
         if (token != _previewToken || _preview == null || _selectedSlot == null) return;
         if (!GodotObject.IsInstanceValid(_preview)) return;
         RequestPreview(_selectedSlot);
+    }
+
+    /// <summary>
+    /// The scrollable list's row container, and the owner of pointer input for
+    /// every row inside it. Rows are <see cref="MouseFilterEnum.Ignore"/>, so
+    /// they never consume a touch: a drag that starts on a row still reaches
+    /// the surrounding <see cref="ScrollContainer"/> and pans the list, and a
+    /// press only activates a row when it stays put (<see cref="TapSlopDetector"/>).
+    /// Same contract as <c>CampaignPanel.TierGrid</c> — Pass, never
+    /// <c>AcceptEvent</c>, and the slop measured on GLOBAL positions because a
+    /// scroll drags the content under the finger.
+    /// </summary>
+    private partial class RowList : VBoxContainer
+    {
+        private readonly TapSlopDetector _tap = new();
+        private readonly SlotPickerDialog _dialog;
+        private readonly Action<int> _onRowTapped;
+
+        public RowList(SlotPickerDialog dialog, Action<int> onRowTapped)
+        {
+            _dialog = dialog;
+            _onRowTapped = onRowTapped;
+            MouseFilter = MouseFilterEnum.Pass;
+            SizeFlagsHorizontal = SizeFlags.ExpandFill;
+        }
+
+        public override void _GuiInput(InputEvent @event)
+        {
+            if (@event is not InputEventMouseButton mb
+                || mb.ButtonIndex != MouseButton.Left)
+            {
+                return;
+            }
+            if (mb.Pressed)
+            {
+                _tap.Press(mb.GlobalPosition.X, mb.GlobalPosition.Y);
+                return;
+            }
+
+            bool isTap = _tap.Release(mb.GlobalPosition.X, mb.GlobalPosition.Y);
+            if (!isTap)
+            {
+                Log.Debug(Log.LogCategory.Input,
+                    $"SlotPicker: gesture at {mb.GlobalPosition} -> scroll (travel > {TapSlopDetector.SlopPx}px)");
+                return;
+            }
+
+            int index = _dialog.RowIndexAt(mb.GlobalPosition);
+            if (index < 0)
+            {
+                Log.Debug(Log.LogCategory.Input,
+                    $"SlotPicker: gesture at {mb.GlobalPosition} -> tap on no row");
+                return;
+            }
+            Log.Debug(Log.LogCategory.Input,
+                $"SlotPicker: gesture at {mb.GlobalPosition} -> tap row {index} "
+                + $"'{_dialog._slots[index].SlotName}'");
+            AudioBus.Instance.PlayClick();
+            _onRowTapped(index);
+        }
+    }
+
+    /// <summary>Index of the row under a global point, or -1. Uses the rows'
+    /// own rects, so it needs no geometry math and follows the scroll offset
+    /// for free.</summary>
+    private int RowIndexAt(Vector2 global)
+    {
+        for (int i = 0; i < _rowButtons.Count; i++)
+            if (_rowButtons[i].GetGlobalRect().HasPoint(global)) return i;
+        return -1;
+    }
+
+    /// <summary>Move the pressed highlight to <paramref name="index"/>. The
+    /// same mechanism keyboard navigation uses, so pointer and keys converge
+    /// on one selection path.</summary>
+    private void HighlightRow(int index)
+    {
+        for (int i = 0; i < _rowButtons.Count; i++)
+            _rowButtons[i].SetPressedNoSignal(i == index);
     }
 
     private bool SlotPresent(string name)
