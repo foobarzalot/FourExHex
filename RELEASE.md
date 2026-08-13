@@ -302,7 +302,7 @@ Launch without needing the activity name:
 "$ADB" shell monkey -p com.foobarzalot.fourexhex -c android.intent.category.LAUNCHER 1
 ```
 
-### iOS — tethered USB install
+### iOS — on-device install (USB or Wi-Fi)
 
 ```
 tools/build_ios.sh debug --tethered
@@ -314,7 +314,12 @@ after the first `xcrun devicectl list devices` from this Mac), restart, confirm
 Developer Mode again. `xcrun devicectl device info details --device <UDID>`
 should show `developerModeStatus: enabled`.
 
-The script auto-detects the first paired USB device. If `xcodebuild archive`
+The script auto-detects the target: any `paired` device counts, cable preferred,
+falling back to one on the local network — so once that first USB pairing is
+done, later installs work over Wi-Fi with no cable, and the run prints which
+transport it used (`Device: <UDID> (wired|network)`). Wireless needs the phone
+unlocked and on the same network as this Mac; `xcrun devicectl list devices`
+shows it as `transportType: localNetwork`. If `xcodebuild archive`
 errors with **"iOS X.Y is not installed"** even though `xcodebuild -showsdks`
 lists the SDK: the iPhone is on a newer point-release of the same iOS minor
 than Xcode's bundled SDK (build number mismatch, e.g. device on `23F77`, Xcode

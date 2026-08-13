@@ -2215,7 +2215,7 @@ The `_landCluster` PanelContainer (slate frame around the 1×6 land row) is full
 
 ## Platform builds & orientation
 
-Build/export mechanics for all four targets live in `RELEASE.md`: `export_presets.cfg`, `tools/build_{macos,windows,android,ios}.sh`, the `dotnet build -c Debug` + `-c ExportDebug`/`ExportRelease` + headless-export shape, the net8-vs-net9 gradle workaround on Android (iOS runs `dotnet publish` against net8 from the Xcode build phases), APK signing, the iOS chain (xcodebuild archive → exportArchive → altool for TestFlight or devicectl for tethered USB, Team ID sed-injected into the empty preset slot and restored on EXIT), plus the on-device install / log-reading / scale-reproduction workflow. This section keeps only the architectural pieces those docs reference.
+Build/export mechanics for all four targets live in `RELEASE.md`: `export_presets.cfg`, `tools/build_{macos,windows,android,ios}.sh`, the `dotnet build -c Debug` + `-c ExportDebug`/`ExportRelease` + headless-export shape, the net8-vs-net9 gradle workaround on Android (iOS runs `dotnet publish` against net8 from the Xcode build phases), APK signing, the iOS chain (xcodebuild archive → exportArchive → altool for TestFlight or devicectl for an on-device install over USB or Wi-Fi, Team ID sed-injected into the empty preset slot and restored on EXIT), plus the on-device install / log-reading / scale-reproduction workflow. This section keeps only the architectural pieces those docs reference.
 
 ### Orientation
 

@@ -49,8 +49,10 @@
 #   --no-upload  Skip the xcrun altool upload step (for dry-run / inspection).
 #   --tethered   Sign the .ipa for `development` distribution (not
 #                `app-store-connect`), skip the App Store Connect upload, and
-#                install onto the connected USB device via `xcrun devicectl`.
-#                Device must be in Developer Mode and trusted on this Mac.
+#                install onto the paired device via `xcrun devicectl` — over
+#                USB, or over Wi-Fi when the device is network-paired and no
+#                cable is attached. Device must be in Developer Mode and
+#                trusted on this Mac.
 #   --dev-ipa    Sign for `development` distribution like --tethered but stop
 #                after producing the .ipa (no device install, no upload). Used
 #                by CI PR builds: the artifact installs tethered later via
@@ -268,31 +270,42 @@ IPA_BUILD="$(unzip -p "$IPA" 'Payload/*.app/Info.plist' \
 echo "==> Verified CFBundleVersion: $IPA_BUILD (matches AppVersion.Build)"
 
 if (( TETHERED )); then
-  echo "==> Installing onto tethered iOS device via xcrun devicectl"
-  # Pick the first connected device that's connected via USB. `devicectl list
-  # devices` JSON output keys are stable across Xcode 15/16/26.
+  echo "==> Installing onto paired iOS device via xcrun devicectl"
+  # `devicectl list devices` JSON output keys are stable across Xcode 15/16/26.
   DEVICE_JSON="$(xcrun devicectl list devices --json-output - 2>/dev/null || true)"
   if [[ -z "$DEVICE_JSON" ]]; then
     fail "xcrun devicectl list devices failed — is Xcode 15+ installed? (current: $(xcodebuild -version | head -1))"
   fi
-  # First paired, USB-attached iOS device wins. devicectl's
-  # deviceProperties.platformIdentifier was unreliable in our testing
-  # (came back null for a real paired iPhone), so we lean on the more
-  # robust pairingState + transportType checks.
-  DEVICE_UDID="$(printf '%s' "$DEVICE_JSON" | python3 -c '
+  # A paired device wins whether it is cabled or on the local network: a
+  # network-paired iPhone installs over Wi-Fi with no tether. Cable is
+  # preferred when both are offered, being the faster and more reliable
+  # transport. devicectl's deviceProperties.platformIdentifier was unreliable
+  # in our testing (came back null for a real paired iPhone), so we lean on
+  # the more robust pairingState + transportType checks.
+  DEVICE_INFO="$(printf '%s' "$DEVICE_JSON" | python3 -c '
 import json, sys
 data = json.load(sys.stdin)
+wired = wireless = ""
 for d in data.get("result", {}).get("devices", []):
     conn = d.get("connectionProperties", {})
-    if conn.get("pairingState") == "paired" \
-       and "wired" in str(conn.get("transportType", "")).lower():
-        print(d.get("identifier", ""))
-        break
+    if conn.get("pairingState") != "paired":
+        continue
+    transport = str(conn.get("transportType", "")).lower()
+    ident = d.get("identifier", "")
+    if "wired" in transport and not wired:
+        wired = ident
+    elif "localnetwork" in transport and not wireless:
+        wireless = ident
+print(("%s\t%s" % (wired, "wired")) if wired
+      else ("%s\t%s" % (wireless, "network")) if wireless
+      else "")
 ' )"
+  DEVICE_UDID="${DEVICE_INFO%%$'\t'*}"
+  DEVICE_TRANSPORT="${DEVICE_INFO##*$'\t'}"
   if [[ -z "$DEVICE_UDID" ]]; then
-    fail "No paired USB-attached iOS device found. Plug in, unlock, Trust This Computer, and enable Developer Mode (Settings → Privacy & Security → Developer Mode)."
+    fail "No paired iOS device found, by cable or on the local network. Unlock the device and enable Developer Mode (Settings → Privacy & Security → Developer Mode); a first pairing needs one USB connection with Trust This Computer, and wireless needs the device on the same network as this Mac."
   fi
-  echo "    Device: $DEVICE_UDID"
+  echo "    Device: $DEVICE_UDID ($DEVICE_TRANSPORT)"
   xcrun devicectl device install app --device "$DEVICE_UDID" "$IPA" \
     | sed -E 's/^/    /' &
   wait $! || fail "devicectl install failed"
