@@ -9142,13 +9142,23 @@
         "Actor": 0,
         "Kind": "BuyUnit",
         "ToQ": 8,
-        "ToR": 10,
+        "ToR": 11,
         "CapitalQ": 9,
         "CapitalR": 10,
         "Level": "Recruit"
       },
       {
         "Index": 12,
+        "Turn": 2,
+        "Actor": 0,
+        "Kind": "Move",
+        "FromQ": 8,
+        "FromR": 11,
+        "ToQ": 8,
+        "ToR": 10
+      },
+      {
+        "Index": 13,
         "Turn": 2,
         "Actor": 0,
         "Kind": "Move",
