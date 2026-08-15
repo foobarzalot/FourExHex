@@ -4532,10 +4532,11 @@ public partial class HexMapView : Node2D, IHexMapView
     }
 
     /// <summary>Clamp the proposed Position so the map can't be dragged off-
-    /// screen. If the map is smaller than the available area on an axis,
-    /// that axis is locked to its centered value. The grid's effective
-    /// pixel extent is PixelSize × _zoom because we apply zoom via
-    /// Node2D.Scale.</summary>
+    /// screen: each axis pans within the range spanned by the board's two
+    /// viewport alignments (see <see cref="PanMath.Clamp"/>), so an axis the
+    /// board fits is pannable across its slack rather than pinned centered.
+    /// The grid's effective pixel extent is PixelSize × _zoom because we
+    /// apply zoom via Node2D.Scale.</summary>
     private Vector2 ClampPan(Vector2 desired)
     {
         Vector2 vp = GetViewportRect().Size;
@@ -4556,6 +4557,13 @@ public partial class HexMapView : Node2D, IHexMapView
         (float x, float y) = PanMath.Clamp(
             desired.X, desired.Y, vp.X, vp.Y, _topInset, _bottomInset,
             minX, minY, maxX, maxY, pad);
+        if (x != desired.X || y != desired.Y)
+        {
+            Log.Trace(Log.LogCategory.Render,
+                $"[pan-clamp] desired=({desired.X:0.#},{desired.Y:0.#}) → " +
+                $"({x:0.#},{y:0.#}) box=({minX:0.#},{minY:0.#})-({maxX:0.#},{maxY:0.#}) " +
+                $"zoom={_zoom:0.###}");
+        }
         return new Vector2(x, y);
     }
 

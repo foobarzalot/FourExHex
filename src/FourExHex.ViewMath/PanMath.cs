@@ -25,14 +25,20 @@ public static class PanMath
 
     /// <summary>
     /// Clamp a proposed board position so it can't be panned off-screen. Each
-    /// axis is locked to its centered value when the board (widened by
-    /// <paramref name="scaledPad"/>) is smaller than the available area on that
-    /// axis; otherwise the desired value is clamped into the reachable range.
-    /// The board box <c>(boxMin/boxMax)</c> is the on-screen AABB of the scaled
-    /// + rotated grid relative to the board node's origin
+    /// axis clamps into the range spanned by the board's two viewport
+    /// alignments — left-edge-at-edge (<c>-minX</c>) and right-edge-at-edge
+    /// (<c>availX - maxX</c>) — widened OUTWARD by <paramref name="scaledPad"/>
+    /// on both ends. The same rule bounds both regimes: a board overflowing
+    /// the available area pans far enough to pull every edge hex pad-clear
+    /// inside the viewport, and a board that fits pans across its slack plus
+    /// the pad instead of pinning — so a max-zoom-out mobile aspect can pan
+    /// on the perpendicular axis too. Travel is <c>|slack| + 2·pad</c> on
+    /// every axis, so the range never collapses near the fit boundary. The
+    /// board box <c>(boxMin/boxMax)</c> is the on-screen AABB of the scaled +
+    /// rotated grid relative to the board node's origin
     /// (<see cref="MapPlacement.RotatedBoardBox"/>); <paramref name="scaledPad"/>
-    /// is the symmetric scroll pad already scaled by zoom. Mirrors
-    /// <c>HexMapView.ClampPan</c> byte-for-byte.
+    /// is the symmetric scroll pad already scaled by zoom. Backs
+    /// <c>HexMapView.ClampPan</c>.
     /// </summary>
     public static (float x, float y) Clamp(
         float desiredX, float desiredY,
@@ -43,20 +49,13 @@ public static class PanMath
         float availX = vpWidth;
         float availY = vpHeight - topInset - bottomInset;
 
-        // Widen the rotated AABB by the symmetric pad (still symmetric after
-        // rotation, so applied directly in viewport space).
-        float minX = boxMinX - scaledPad, minY = boxMinY - scaledPad;
-        float maxX = boxMaxX + scaledPad, maxY = boxMaxY + scaledPad;
+        float xA = -boxMinX, xB = availX - boxMaxX;
+        float yA = topInset - boxMinY, yB = topInset + availY - boxMaxY;
 
-        float boxW = maxX - minX;
-        float boxH = maxY - minY;
-
-        float x = boxW <= availX
-            ? (availX - boxW) * 0.5f - minX
-            : ClampValue(desiredX, availX - maxX, -minX);
-        float y = boxH <= availY
-            ? topInset + (availY - boxH) * 0.5f - minY
-            : ClampValue(desiredY, topInset + availY - maxY, topInset - minY);
+        float x = ClampValue(desiredX,
+            System.MathF.Min(xA, xB) - scaledPad, System.MathF.Max(xA, xB) + scaledPad);
+        float y = ClampValue(desiredY,
+            System.MathF.Min(yA, yB) - scaledPad, System.MathF.Max(yA, yB) + scaledPad);
         return (x, y);
     }
 
