@@ -1,15 +1,18 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 FooBarzalot
 using System;
+using System.Collections.Generic;
 using Godot;
 
 /// <summary>
 /// Achievements modal — backdrop + centered panel listing every catalog
-/// entry with its earned state, opened from the main menu. Mirrors
-/// <see cref="CreditsPanel"/>'s skeleton (backdrop, centered panel, serif
-/// title, gold rule, scroll body, Back) rather than
-/// <see cref="CampaignPanel"/>'s viewport-filling scroller: a flat list
-/// needs none of the campaign grid's geometry, and a
+/// entry with its earned state, opened from the main menu. Orientation-
+/// split like <see cref="SettingsPanel"/>: portrait is a fixed-width
+/// centered column that fills the safe height (title, count, gold rule,
+/// scroll body, Back); landscape reflows into a wide
+/// <see cref="LandscapeMenuChrome"/> surface with an inline title row and
+/// a two-column scroll body, groups balanced by
+/// <see cref="AchievementPanelLayout.SplitTwoColumns"/>. A
 /// <see cref="CanvasLayer"/> overlay stays out of the landing/play-config
 /// visibility triad.
 ///
@@ -27,17 +30,23 @@ public sealed partial class AchievementsPanel : CanvasLayer
     public bool IsOpen { get; private set; }
 
     private PanelContainer _panel = null!;
+    // Node RebuildBody frees on an orientation flip (currently == _panel).
+    private Node _panelRoot = null!;
     private Label _headerCount = null!;
-    private VBoxContainer _rows = null!;
+    // Portrait single column; null while the landscape body is built.
+    private VBoxContainer? _rows;
+    // Landscape columns; null while the portrait body is built.
+    private VBoxContainer? _colLeft;
+    private VBoxContainer? _colRight;
+    private ScreenOrientation _orientation;
     private bool _viewportResizeHooked;
 
     private static readonly Font _serifFont =
         GD.Load<FontFile>("res://fonts/DMSerifDisplay-Regular.ttf");
 
-    // Matches the Settings / Credits box so switching between modals
-    // doesn't jump the frame.
+    // Matches the Settings / Credits width so switching between modals
+    // doesn't jump the frame; portrait height fills the safe viewport.
     private const float DesignWidth = 456f;
-    private const float DesignHeight = 540f;
     private const float ViewportMargin = UiMetrics.ViewportMarginPx;
     private const float RowMinHeight = 64f;
 
@@ -51,7 +60,73 @@ public sealed partial class AchievementsPanel : CanvasLayer
         Vector2 viewport = GetViewport().GetVisibleRect().Size;
         AddChild(ModalChrome.BuildBackdrop(viewport));
 
-        _panel = ModalChrome.BuildCenteredPanel(DesignWidth, DesignHeight);
+        BuildBody();
+
+        GetViewport().SizeChanged += OnViewportResized;
+        _viewportResizeHooked = true;
+        SafeArea.Changed += OnSafeAreaChanged;
+    }
+
+    public override void _ExitTree()
+    {
+        SafeArea.Changed -= OnSafeAreaChanged;
+        if (!_viewportResizeHooked) return;
+        GetViewport().SizeChanged -= OnViewportResized;
+        _viewportResizeHooked = false;
+    }
+
+    private void OnSafeAreaChanged(LogicalSafeInsets _) => RefitOrRelayout();
+
+    private void OnViewportResized()
+    {
+        Vector2 viewport = GetViewport().GetVisibleRect().Size;
+        ScreenOrientation next = ScreenLayout.Resolve(viewport.X, viewport.Y);
+        if (next != _orientation) { RebuildBody(); return; }
+        RefitOrRelayout();
+    }
+
+    /// <summary>Portrait scales/fills the fixed-width panel; landscape
+    /// re-centers and re-caps the fill surface.</summary>
+    private void RefitOrRelayout()
+    {
+        if (_orientation == ScreenOrientation.Portrait) FitPanel();
+        else LandscapeMenuChrome.ApplyLayout(
+            _panel, GetViewport().GetVisibleRect().Size, SafeArea.Current);
+    }
+
+    /// <summary>Build the panel subtree for the current orientation.</summary>
+    private void BuildBody()
+    {
+        Vector2 viewport = GetViewport().GetVisibleRect().Size;
+        _orientation = ScreenLayout.Resolve(viewport.X, viewport.Y);
+        if (_orientation == ScreenOrientation.Landscape) BuildLandscapeBody();
+        else BuildPortraitBody();
+        Log.Info(Log.LogCategory.Render,
+            $"AchievementsPanel: built {_orientation} body " +
+            $"(viewport {viewport.X:0}x{viewport.Y:0})");
+    }
+
+    /// <summary>Free the current body and rebuild it for the new orientation
+    /// (mirrors SettingsPanel). Rows re-populate from AchievementStore, so a
+    /// rebuild while open loses nothing.</summary>
+    private void RebuildBody()
+    {
+        Log.Debug(Log.LogCategory.Render,
+            $"AchievementsPanel: orientation flip from {_orientation}; rebuilding body");
+        _panelRoot.QueueFree();
+        BuildBody();
+        if (IsOpen) Rebuild();
+    }
+
+    /// <summary>Single-column portrait layout: fixed-width centered panel
+    /// whose height fills the safe viewport (FitPanel).</summary>
+    private void BuildPortraitBody()
+    {
+        _colLeft = null;
+        _colRight = null;
+
+        _panel = ModalChrome.BuildCenteredPanel(DesignWidth, 0f);
+        _panelRoot = _panel;
         AddChild(_panel);
 
         var vbox = new VBoxContainer();
@@ -89,6 +164,89 @@ public sealed partial class AchievementsPanel : CanvasLayer
         _rows.MouseFilter = Control.MouseFilterEnum.Ignore;
         scroll.AddChild(_rows);
 
+        vbox.AddChild(MakeBackButton());
+
+        FitPanel();
+    }
+
+    /// <summary>Landscape layout: wide LandscapeMenuChrome surface — inline
+    /// title row (title, count, gold rule), a scroller holding two balanced
+    /// columns of category sections, and a full-width Back footer.</summary>
+    private void BuildLandscapeBody()
+    {
+        _rows = null;
+
+        _panel = LandscapeMenuChrome.Build();
+        _panelRoot = _panel;
+        AddChild(_panel);
+
+        var outer = new VBoxContainer();
+        outer.AddThemeConstantOverride("separation", 14);
+        _panel.AddChild(outer);
+
+        // Title row: serif title + count + an expanding gold rule.
+        var titleRow = new HBoxContainer();
+        titleRow.AddThemeConstantOverride("separation", 18);
+        var title = new Label { Text = Strings.Get(StringKeys.AchieveTitle) };
+        title.AddThemeFontOverride("font", _serifFont);
+        title.AddThemeFontSizeOverride("font_size", 36);
+        title.SizeFlagsVertical = Control.SizeFlags.ShrinkCenter;
+        titleRow.AddChild(title);
+        _headerCount = new Label { SizeFlagsVertical = Control.SizeFlags.ShrinkCenter };
+        _headerCount.AddThemeFontSizeOverride("font_size", 20);
+        _headerCount.AddThemeColorOverride("font_color", UiPalette.InkSoft);
+        titleRow.AddChild(_headerCount);
+        titleRow.AddChild(new ColorRect
+        {
+            Color = UiPalette.GoldDim,
+            CustomMinimumSize = new Vector2(0, 2),
+            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+            SizeFlagsVertical = Control.SizeFlags.ShrinkCenter,
+        });
+        outer.AddChild(titleRow);
+
+        var scroll = new ScrollContainer
+        {
+            SizeFlagsVertical = Control.SizeFlags.ExpandFill,
+            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+            HorizontalScrollMode = ScrollContainer.ScrollMode.Disabled,
+        };
+        outer.AddChild(scroll);
+
+        var columns = new HBoxContainer
+        {
+            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+            MouseFilter = Control.MouseFilterEnum.Ignore,
+        };
+        columns.AddThemeConstantOverride("separation", 24);
+        scroll.AddChild(columns);
+
+        _colLeft = MakeColumn();
+        columns.AddChild(_colLeft);
+        _colRight = MakeColumn();
+        columns.AddChild(_colRight);
+
+        outer.AddChild(MakeBackButton());
+
+        LandscapeMenuChrome.ApplyLayout(
+            _panel, GetViewport().GetVisibleRect().Size, SafeArea.Current);
+    }
+
+    private static VBoxContainer MakeColumn()
+    {
+        var column = new VBoxContainer
+        {
+            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+            // Ignore so a touch-drag in the gaps between rows reaches the
+            // scroller instead of stopping here.
+            MouseFilter = Control.MouseFilterEnum.Ignore,
+        };
+        column.AddThemeConstantOverride("separation", 8);
+        return column;
+    }
+
+    private Button MakeBackButton()
+    {
         var backButton = new Button
         {
             Text = Strings.Get(StringKeys.MenuBack),
@@ -98,48 +256,66 @@ public sealed partial class AchievementsPanel : CanvasLayer
         backButton.AddThemeFontSizeOverride("font_size", 24);
         backButton.Pressed += Close;
         AudioBus.AttachClick(backButton);
-        vbox.AddChild(backButton);
-
-        FitPanel();
-        GetViewport().SizeChanged += FitPanel;
-        _viewportResizeHooked = true;
-        SafeArea.Changed += OnSafeAreaChanged;
+        return backButton;
     }
-
-    public override void _ExitTree()
-    {
-        SafeArea.Changed -= OnSafeAreaChanged;
-        if (!_viewportResizeHooked) return;
-        GetViewport().SizeChanged -= FitPanel;
-        _viewportResizeHooked = false;
-    }
-
-    private void OnSafeAreaChanged(LogicalSafeInsets _) => FitPanel();
 
     /// <summary>Rebuild the category sections + rows from the current
-    /// record. Grouping comes from <see cref="AchievementPanelLayout"/>
-    /// (Controller, unit-tested); this only renders it.</summary>
+    /// record into whichever body is built. Grouping comes from
+    /// <see cref="AchievementPanelLayout"/> (Controller, unit-tested);
+    /// this only renders it.</summary>
     private void Rebuild()
     {
-        foreach (Node child in _rows.GetChildren()) child.QueueFree();
-
         AchievementRecord record = AchievementStore.Record;
-        int unlocked = 0;
-        foreach (AchievementPanelLayout.Group group in AchievementPanelLayout.Groups())
+        IReadOnlyList<AchievementPanelLayout.Group> groups = AchievementPanelLayout.Groups();
+        int unlocked;
+        if (_orientation == ScreenOrientation.Landscape)
         {
-            _rows.AddChild(BuildCategoryHeader(Strings.Get(group.TitleKey)));
-            foreach (AchievementDefinition def in group.Rows)
-            {
-                bool earned = record.IsUnlocked(def.Id);
-                if (earned) unlocked++;
-                _rows.AddChild(BuildRow(def, earned, record.ProgressFor(def.Id)));
-            }
+            var (left, right) = AchievementPanelLayout.SplitTwoColumns(groups);
+            unlocked = PopulateColumn(_colLeft!, left, record)
+                + PopulateColumn(_colRight!, right, record);
+            Log.Debug(Log.LogCategory.Render,
+                "AchievementsPanel: landscape split " +
+                $"left={SumRows(left)} rows right={SumRows(right)} rows");
+        }
+        else
+        {
+            unlocked = PopulateColumn(_rows!, groups, record);
         }
 
         _headerCount.Text = Strings.Get(
             StringKeys.AchieveHeaderCount,
             ("unlocked", unlocked.ToString()),
             ("total", AchievementCatalog.All.Count.ToString()));
+    }
+
+    private static int SumRows(IReadOnlyList<AchievementPanelLayout.Group> groups)
+    {
+        int rows = 0;
+        foreach (AchievementPanelLayout.Group group in groups) rows += group.Rows.Count;
+        return rows;
+    }
+
+    /// <summary>Clear <paramref name="into"/> and fill it with the given
+    /// groups' headers + rows; returns how many of them are unlocked.</summary>
+    private static int PopulateColumn(
+        VBoxContainer into,
+        IReadOnlyList<AchievementPanelLayout.Group> groups,
+        AchievementRecord record)
+    {
+        foreach (Node child in into.GetChildren()) child.QueueFree();
+
+        int unlocked = 0;
+        foreach (AchievementPanelLayout.Group group in groups)
+        {
+            into.AddChild(BuildCategoryHeader(Strings.Get(group.TitleKey)));
+            foreach (AchievementDefinition def in group.Rows)
+            {
+                bool earned = record.IsUnlocked(def.Id);
+                if (earned) unlocked++;
+                into.AddChild(BuildRow(def, earned, record.ProgressFor(def.Id)));
+            }
+        }
+        return unlocked;
     }
 
     /// <summary>Section header: category name over a gold rule.</summary>
@@ -240,9 +416,9 @@ public sealed partial class AchievementsPanel : CanvasLayer
             ("target", def.Target.ToString()));
     }
 
-    /// <summary>Fit to the safe viewport at a constant width and font size,
-    /// capping height so the list scrolls further rather than shrinking —
-    /// same rationale as <see cref="CreditsPanel.FitPanel"/>.</summary>
+    /// <summary>Portrait fit: constant width and font size, height filling
+    /// the safe viewport so the list shows as many rows as the screen
+    /// allows (issue #240's taller-portrait goal).</summary>
     private void FitPanel()
     {
         Vector2 vp = GetViewport().GetVisibleRect().Size;
@@ -250,7 +426,7 @@ public sealed partial class AchievementsPanel : CanvasLayer
         (float availW, float availH) = PanelFitMath.AvailableBox(vp.X, vp.Y, safe, ViewportMargin);
 
         (float scale, float panelH) =
-            PanelFitMath.WidthFitWithHeightCap(DesignWidth, DesignHeight, availW, availH);
+            PanelFitMath.WidthFitWithHeightCap(DesignWidth, float.MaxValue, availW, availH);
         _panel.OffsetTop = -panelH * 0.5f;
         _panel.OffsetBottom = panelH * 0.5f;
 
@@ -267,7 +443,7 @@ public sealed partial class AchievementsPanel : CanvasLayer
     {
         if (IsOpen) return;
         Rebuild();
-        FitPanel();
+        RefitOrRelayout();
         IsOpen = true;
         Visible = true;
         Log.Debug(Log.LogCategory.Achieve,
