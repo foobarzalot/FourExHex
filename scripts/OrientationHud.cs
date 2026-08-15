@@ -217,8 +217,10 @@ public abstract partial class OrientationHud : CanvasLayer
         // anything collides, which is the early warning.
         float leftW = WidestBlock(leftBlocks);
         float rightW = WidestBlock(rightBlocks);
+        // Inset-aware overload so the budget matches where MakeCornerZone
+        // actually places the zones (partial safe-area nudge included).
         float gap = HudCornerLayout.CornerGap(
-            vpWidth, leftW, rightW, UiMetrics.CornerZoneEdgePadPx);
+            vpWidth, leftW, rightW, SafeArea.Current, UiMetrics.CornerZoneEdgePadPx);
 
         if (worst > 0f)
         {

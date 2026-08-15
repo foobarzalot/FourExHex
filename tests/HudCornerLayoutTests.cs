@@ -112,18 +112,6 @@ public class HudCornerLayoutTests
     }
 
     [Fact]
-    public void LandscapeKeepsUndoInTheCorner_WithBothChipsInline()
-    {
-        // Landscape sets the two chips side by side in the top-left zone and
-        // keeps the full chrome (undo/redo + help + options) in the top-right.
-        // 921 is wide enough for all of it, which is why landscape is left
-        // alone: 921 − 20 − 394 − 300 = 207 px clear.
-        float inlineChipsW = StatusChipW + UiMetrics.CornerZoneSeparationPx + GoldChipW;
-        Assert.True(HudCornerLayout.CornersFit(
-            MiniLandscapeW, inlineChipsW, ChromeWithUndoW, Pad));
-    }
-
-    [Fact]
     public void GoldChipIsTheBindingConstraintOnTheNarrowestPhone()
     {
         // The gold chip is wider than the status chip, so it sets the margin:
@@ -134,5 +122,62 @@ public class HudCornerLayoutTests
             MiniPortraitW, StatusChipW, ChromeW, Pad);
         Assert.Equal(15f, goldGap);
         Assert.True(statusGap > goldGap);
+    }
+
+    // --- Inset-aware nudge: corner chrome backs out a FRACTION of the
+    // safe-area inset (not the rails' full-inset convention) ---
+
+    /// <summary>iPhone 13 mini landscape logical insets: no top, home
+    /// indicator bottom, notch on one side (rotation flips which).</summary>
+    private static readonly LogicalSafeInsets MiniLandscape =
+        new(Top: 0f, Bottom: 21f, Left: 47f, Right: 0f);
+
+    [Fact]
+    public void SideOffset_IsTheBarePad_AtZeroInsets()
+    {
+        Assert.Equal(Pad, HudCornerLayout.SideOffset(LogicalSafeInsets.Zero, Pad));
+    }
+
+    [Fact]
+    public void SideOffset_AddsTheNudgeFractionOfTheLargerSideInset()
+    {
+        Assert.Equal(
+            Pad + 47f * HudCornerLayout.CornerNudgeFactor,
+            HudCornerLayout.SideOffset(MiniLandscape, Pad));
+    }
+
+    [Fact]
+    public void SideOffset_IsRotationSymmetric()
+    {
+        var notchLeft = new LogicalSafeInsets(0f, 21f, 47f, 0f);
+        var notchRight = new LogicalSafeInsets(0f, 21f, 0f, 47f);
+        Assert.Equal(
+            HudCornerLayout.SideOffset(notchLeft, Pad),
+            HudCornerLayout.SideOffset(notchRight, Pad));
+    }
+
+    [Fact]
+    public void InsetAwareCornerGap_ShrinksByTwiceTheSideNudge()
+    {
+        float legacy = HudCornerLayout.CornerGap(MiniLandscapeW, 300f, 200f, Pad);
+        float inset = HudCornerLayout.CornerGap(
+            MiniLandscapeW, 300f, 200f, MiniLandscape, Pad);
+        Assert.Equal(
+            legacy - 2f * 47f * HudCornerLayout.CornerNudgeFactor, inset);
+        // Zero insets degrade to the legacy arithmetic exactly.
+        Assert.Equal(legacy, HudCornerLayout.CornerGap(
+            MiniLandscapeW, 300f, 200f, LogicalSafeInsets.Zero, Pad));
+    }
+
+    [Fact]
+    public void LandscapeTopCorners_ClearTheNotch_WithBothChipsInline()
+    {
+        // Landscape sets the two chips side by side in the top-left zone and
+        // help + options in the top-right (undo/redo ride the bottom-left
+        // strip, End Turn + Automate the bottom-right). Even backed out by
+        // the notch nudge, 921 logical px clears with room to spare.
+        float inlineChipsW = StatusChipW + UiMetrics.CornerZoneSeparationPx + GoldChipW;
+        Assert.True(HudCornerLayout.CornersFit(
+            MiniLandscapeW, inlineChipsW, ChromeW, MiniLandscape, Pad));
     }
 }

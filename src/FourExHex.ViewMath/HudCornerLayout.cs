@@ -32,4 +32,33 @@ public static class HudCornerLayout
     public static bool CornersFit(
         float viewportWidth, float leftWidth, float rightWidth, float edgePadPx)
         => CornerGap(viewportWidth, leftWidth, rightWidth, edgePadPx) >= 0f;
+
+    /// <summary>
+    /// Fraction of the safe-area inset the corner chrome backs away from the
+    /// display edge. Deliberately partial: the corners are clipped by the
+    /// rounded display corners and the notch's shoulder, not its full depth,
+    /// so the full rails-style inset would waste screen. This is the single
+    /// on-device tuning dial for how far the corner elements sit in.
+    /// </summary>
+    public const float CornerNudgeFactor = 0.5f;
+
+    /// <summary>Horizontal edge offset for a corner-anchored block:
+    /// the pad plus the nudge fraction of the larger side inset. Uses
+    /// max(Left, Right) so both notch rotations place chrome identically.</summary>
+    public static float SideOffset(LogicalSafeInsets safe, float edgePadPx)
+        => edgePadPx + System.MathF.Max(safe.Left, safe.Right) * CornerNudgeFactor;
+
+    /// <summary>Inset-aware <see cref="CornerGap"/>: both zones sit at
+    /// <see cref="SideOffset"/> rather than the bare pad, so the clear space
+    /// shrinks by twice the side nudge. Zero insets degrade to the legacy
+    /// arithmetic exactly.</summary>
+    public static float CornerGap(
+        float viewportWidth, float leftWidth, float rightWidth,
+        LogicalSafeInsets safe, float edgePadPx)
+        => viewportWidth - SideOffset(safe, edgePadPx) * 2f - leftWidth - rightWidth;
+
+    public static bool CornersFit(
+        float viewportWidth, float leftWidth, float rightWidth,
+        LogicalSafeInsets safe, float edgePadPx)
+        => CornerGap(viewportWidth, leftWidth, rightWidth, safe, edgePadPx) >= 0f;
 }

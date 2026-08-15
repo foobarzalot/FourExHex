@@ -799,74 +799,94 @@ public partial class HudView : OrientationHud, IHudView
         // — mirrors the left rail's pair. End Turn is NOT in the rail.
         RightRailGroup!.AddChild(_controlsCluster);
 
-        // End Turn / Automate / undo+redo float as one strip anchored to the
-        // bottom-right corner of the viewport.
+        // End Turn + Automate float as a strip anchored to the bottom-right
+        // corner; undo/redo mirror them at the bottom-left.
         PinBottomRightStrip();
+        PinBottomLeftStrip();
 
-        // In expanded landscape the right rail bottom-anchors its content
-        // (alignBottom = true). End Turn pinned to the bottom-right corner
-        // would then collide with the bottom-most nav button. Push the
-        // rail group's bottom edge UP by End Turn's footprint so the nav
-        // cluster sits just above the End Turn slot. Compact landscape
-        // centers the group vertically and doesn't need this clearance.
-        if (!Compact && RightRailGroup != null)
+        // In expanded landscape both rails bottom-anchor their content
+        // (alignBottom = true), so a corner-pinned block would collide with
+        // the bottom-most rail button. Push each rail group's bottom edge UP
+        // by the corner block's footprint: End Turn under the right rail,
+        // the undo/redo cluster under the left. Compact landscape centers
+        // the groups vertically and doesn't need the clearance.
+        if (!Compact)
         {
-            const float endTurnClearance =
+            const float cornerClearance =
                 UiMetrics.TouchButtonSizePx + 20f;   // button + spacing
-            RightRailGroup.OffsetBottom -= endTurnClearance;
+            if (RightRailGroup != null) RightRailGroup.OffsetBottom -= cornerClearance;
+            if (LeftRailGroup != null) LeftRailGroup.OffsetBottom -= cornerClearance;
         }
 
         Log.Debug(Log.LogCategory.Render,
             "HudView: landscape cluster placement — statusChip+goldChip → TopLeft, " +
             "helpButton+optionsButton → TopRight, actionCluster → LeftRail, " +
             "controlsCluster → RightRail (centered), " +
-            "endTurnButton+automateButton+undoCluster → bottom-right strip.");
+            "endTurnButton+automateButton → bottom-right strip, " +
+            "undoCluster → bottom-left strip.");
     }
 
     /// <summary>Lay the landscape bottom-right corner strip out right-to-left:
-    /// End Turn at the corner, then Automate, then undo/redo. Each block is a
-    /// direct child of this CanvasLayer, anchored rather than in a container,
-    /// so the rails can't push it around.</summary>
+    /// End Turn at the corner, then Automate. Each block is a direct child of
+    /// this CanvasLayer, anchored rather than in a container, so the rails
+    /// can't push it around.</summary>
     private void PinBottomRightStrip()
     {
-        // The strip sits at the literal bottom-right corner — it does NOT
-        // respect safe-area insets (it claims the corner real estate the
-        // rails leave behind). On iPhone landscape it'll overlap the
-        // home-indicator strip; iOS still routes taps through.
         const float gap = 10f;
-        float rightOffset = CornerStripPad;
+        float rightOffset = CornerSideOffset();
 
-        rightOffset = PinBottomRight(_endTurnButton, rightOffset) + gap;
+        rightOffset = PinBottomCorner(_endTurnButton, left: false, rightOffset) + gap;
         if (_automateButton != null)
         {
-            rightOffset = PinBottomRight(_automateButton, rightOffset) + gap;
+            PinBottomCorner(_automateButton, left: false, rightOffset);
         }
-        PinBottomRight(_undoCluster, rightOffset);
     }
 
-    /// <summary>Distance the bottom-right corner strip keeps from the
-    /// viewport's right and bottom edges.</summary>
+    /// <summary>Mirror of <see cref="PinBottomRightStrip"/>: the undo/redo
+    /// cluster anchored to the bottom-left corner.</summary>
+    private void PinBottomLeftStrip()
+    {
+        PinBottomCorner(_undoCluster, left: true, CornerSideOffset());
+    }
+
+    /// <summary>Distance the bottom corner strips keep from the viewport's
+    /// side and bottom edges before the safe-area nudge.</summary>
     private const float CornerStripPad = 10f;
 
-    /// <summary>Corner-anchor a block to the viewport's bottom edge, its right
-    /// edge <paramref name="rightOffset"/> px in from the right, as a direct
-    /// child of this CanvasLayer (no container interference). Returns the
-    /// offset of the block's LEFT edge, so the caller can chain the next
-    /// block leftward without knowing this one's width.</summary>
-    private float PinBottomRight(Control block, float rightOffset)
+    /// <summary>Side offset for the bottom corner strips: the pad backed out
+    /// by the partial safe-area nudge (same dial as the top corner zones).</summary>
+    private float CornerSideOffset()
+        => HudCornerLayout.SideOffset(SafeArea.Current, CornerStripPad);
+
+    /// <summary>Corner-anchor a block to the viewport's bottom edge, its
+    /// outer edge <paramref name="sideOffset"/> px in from the chosen side,
+    /// as a direct child of this CanvasLayer (no container interference).
+    /// The bottom offset mirrors the top corner zones' top offset
+    /// (safe.Top + pad) so top and bottom chrome sit at matching distances
+    /// from their screen edges; the home indicator strip still routes taps
+    /// through. Returns the offset of the block's inner edge, so the caller
+    /// can chain the next block toward the middle without knowing this
+    /// one's width.</summary>
+    private float PinBottomCorner(Control block, bool left, float sideOffset)
     {
-        block.AnchorLeft = 1f;
-        block.AnchorRight = 1f;
+        float bottomOffset = SafeArea.Current.Top + CornerStripPad;
+        block.AnchorLeft = left ? 0f : 1f;
+        block.AnchorRight = left ? 0f : 1f;
         block.AnchorTop = 1f;
         block.AnchorBottom = 1f;
-        block.GrowHorizontal = Control.GrowDirection.Begin;
+        block.GrowHorizontal = left ? Control.GrowDirection.End : Control.GrowDirection.Begin;
         block.GrowVertical = Control.GrowDirection.Begin;
-        block.OffsetLeft = -rightOffset;
-        block.OffsetRight = -rightOffset;
-        block.OffsetTop = -CornerStripPad;
-        block.OffsetBottom = -CornerStripPad;
+        block.OffsetLeft = left ? sideOffset : -sideOffset;
+        block.OffsetRight = left ? sideOffset : -sideOffset;
+        block.OffsetTop = -bottomOffset;
+        block.OffsetBottom = -bottomOffset;
         AddChild(block);
-        return rightOffset + block.GetCombinedMinimumSize().X;
+        Log.Debug(Log.LogCategory.Render,
+            $"HudView: corner strip pin {block.Name} {(left ? "bottom-left" : "bottom-right")} " +
+            $"side={sideOffset:0.#} bottom={bottomOffset:0.#} " +
+            $"(safe l{SafeArea.Current.Left:0.#} r{SafeArea.Current.Right:0.#} " +
+            $"b{SafeArea.Current.Bottom:0.#})");
+        return sideOffset + block.GetCombinedMinimumSize().X;
     }
 
     /// <summary>Undo the corner-anchoring landscape applied to every block in
@@ -999,19 +1019,26 @@ public partial class HudView : OrientationHud, IHudView
         _seedLabel.Visible = !RecordingMode.Active;
         // Bottom-left, INSIDE the safe-area-bottom strip — below the
         // button rows so it sits where the iPhone home indicator lives.
-        // OffsetLeft matches the bottom-bar's inner-VBox left padding
-        // (16 px) so the label lines up under the leftmost button column.
         // Bottom margin sits just inside the safe-area; nudged up so the
-        // label doesn't graze the indicator on iPhone.
+        // label doesn't graze the indicator on iPhone. In landscape the
+        // undo/redo cluster owns the bottom-left corner, so the label
+        // lifts above its footprint.
         float seedBottom = -10f;
+        if (Orientation == ScreenOrientation.Landscape)
+        {
+            seedBottom = -(SafeArea.Current.Top + CornerStripPad
+                + UiMetrics.TouchButtonSizePx + 10f);
+        }
         float seedTop = seedBottom - 22f;
         _seedLabel.OffsetTop = seedTop;
         _seedLabel.OffsetBottom = seedBottom;
-        // Nudged right of the bottom-bar inner padding so the label
-        // tucks under the right edge of the leftmost button column
-        // rather than hugging the viewport edge.
-        _seedLabel.OffsetLeft = 36f;
-        _seedLabel.OffsetRight = 316f;
+        // Nudged right of the bottom-bar inner padding (16 px) so the label
+        // tucks under the right edge of the leftmost button column rather
+        // than hugging the viewport edge, plus the partial safe-area nudge
+        // so a landscape notch can't clip it.
+        float seedLeft = 36f + HudCornerLayout.SideOffset(SafeArea.Current, 0f);
+        _seedLabel.OffsetLeft = seedLeft;
+        _seedLabel.OffsetRight = seedLeft + 280f;
         Log.Debug(Log.LogCategory.Render,
             $"HudView: seed label in safe-area bottom-left ({Orientation}).");
         PositionTutorialOverlay();

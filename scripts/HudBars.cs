@@ -45,13 +45,13 @@ public static class HudBars
     public static HBoxContainer MakeCornerZone(bool left)
     {
         LogicalSafeInsets safe = SafeArea.Current;
-        // Top respects the safe inset (notch / Dynamic Island vertically);
-        // the horizontal sides do NOT — corner readouts and the
-        // undo/redo/options buttons may sit IN the safe-area corners
-        // (acceptable on iPhone landscape: the notch occupies one
-        // top-corner; the others are safe). Rails take the inset instead.
+        // Top respects the full safe inset (notch / Dynamic Island
+        // vertically); the horizontal sides back out by only a fraction of
+        // the side inset (HudCornerLayout.CornerNudgeFactor) — enough to
+        // clear the rounded display corners and the notch's shoulder,
+        // deliberately less than the rails' full-inset convention.
         float topOffset = safe.Top + UiMetrics.CornerZoneEdgePadPx;
-        float sideOffset = UiMetrics.CornerZoneEdgePadPx;
+        float sideOffset = HudCornerLayout.SideOffset(safe, UiMetrics.CornerZoneEdgePadPx);
 
         var zone = new HBoxContainer
         {
@@ -141,14 +141,17 @@ public static class HudBars
 
         // Inner vertical group, anchored to fill the rail. The group's own
         // alignment via SizeFlags decides where the buttons sit within the
-        // rail's height (Center on compact, End on expanded).
+        // rail's height (Center on compact, End on expanded). Top and bottom
+        // insets are deliberately SYMMETRIC (both from safe.Top) so a
+        // centered cluster sits midway between the top corner chrome and the
+        // bottom corner strips, which use the same edge distance.
         var group = new VBoxContainer
         {
             AnchorLeft = 0f, AnchorRight = 1f,
             AnchorTop = 0f, AnchorBottom = 1f,
             OffsetLeft = 8f, OffsetRight = -8f,
             OffsetTop = safe.Top + 10f,
-            OffsetBottom = -(safe.Bottom + 10f),
+            OffsetBottom = -(safe.Top + 10f),
             Alignment = alignBottom ? BoxContainer.AlignmentMode.End : BoxContainer.AlignmentMode.Center,
             MouseFilter = Control.MouseFilterEnum.Pass,
         };
