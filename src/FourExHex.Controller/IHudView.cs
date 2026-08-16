@@ -86,8 +86,16 @@ public interface IHudView
     /// <summary>
     /// Update every label, button disabled state, and the End Turn CTA
     /// styling from the current game + session state.
+    /// <paramref name="hasActionableRemaining"/> — the current player has
+    /// at least one actionable territory (the flag that lights End Turn).
+    /// <paramref name="canStepTerritory"/> — a Next/Previous Territory
+    /// press would actually change the selection: some territory in the
+    /// Tab cycle other than the current selection has an available
+    /// action (with no selection, any actionable territory counts).
+    /// Both are controller-derived predicates; views only render them.
     /// </summary>
-    void Refresh(GameState state, SessionState session, bool hasActionableRemaining);
+    void Refresh(GameState state, SessionState session, bool hasActionableRemaining,
+        bool canStepTerritory);
 
     /// <summary>
     /// One-time announcement of the map identity to display in a small

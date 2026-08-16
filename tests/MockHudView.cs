@@ -38,6 +38,7 @@ public class MockHudView : IHudView
     public GameState? LastState { get; private set; }
     public SessionState? LastSession { get; private set; }
     public bool LastHasActionableRemaining { get; private set; }
+    public bool LastCanStepTerritory { get; private set; }
 
     /// <summary>
     /// Snapshot of <see cref="SessionState.Winner"/> as observed at
@@ -60,12 +61,14 @@ public class MockHudView : IHudView
     /// </summary>
     public SessionState.ActionMode LastSeenMode { get; private set; }
 
-    public void Refresh(GameState state, SessionState session, bool hasActionableRemaining)
+    public void Refresh(GameState state, SessionState session, bool hasActionableRemaining,
+        bool canStepTerritory)
     {
         RefreshCount++;
         LastState = state;
         LastSession = session;
         LastHasActionableRemaining = hasActionableRemaining;
+        LastCanStepTerritory = canStepTerritory;
         LastSeenWinner = session.Winner;
         LastSeenMode = session.Mode;
     }

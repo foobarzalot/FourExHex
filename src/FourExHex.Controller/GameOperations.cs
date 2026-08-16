@@ -1064,8 +1064,14 @@ public class GameOperations
     {
         long tWhole = Log.Stamp();
         bool hasActionable = HasAnyActionableForCurrentPlayer();
+        // Next/Previous Territory only moves the selection to some OTHER
+        // territory in the Tab cycle; with no selection the walk visits
+        // everything, so any actionable territory makes the press land.
+        bool canStepTerritory = _session.SelectedTerritory?.Capital == null
+            ? hasActionable
+            : CanStepToAnotherTerritory();
         long tHud = Log.Stamp();
-        _hud.Refresh(_state, _session, hasActionable);
+        _hud.Refresh(_state, _session, hasActionable, canStepTerritory);
         Log.Since(Log.LogCategory.Capture, "[hitch] HudView.Refresh", tHud);
         // Fog Of War: render from the single human's perspective — recompute
         // their sight, refresh last-seen memory, and push the projection BEFORE
@@ -1130,19 +1136,22 @@ public class GameOperations
         bool endTurnCta = isHuman && (endTurnShouldLight || _session.EndTurnCtaLatched);
         _hud.SetCta(CtaButton.EndTurn, endTurnCta, pulse: false);
         // Next-Territory CTA: highlight the star when the current human
-        // player has somewhere actionable to jump to but their current
+        // player has somewhere OTHER than the current selection to jump
+        // to (canStepTerritory — the same flag that enables the button,
+        // so a disabled star never renders the CTA) but their current
         // selection (if any) is itself exhausted or is a revisit of a
         // territory already toured this turn. Suppressed on AI turns —
         // the star is a human-input affordance — and whenever the End
         // Turn CTA holds (one clear signal wins). Same "last write wins"
         // policy as EndTurn so Tutorial Preview can override.
-        bool nextCta = isHuman && hasActionable
+        bool nextCta = isHuman && canStepTerritory
             && (selExhausted || _session.SelectionWasRevisit)
             && !endTurnCta;
         _hud.SetCta(CtaButton.NextTerritory, nextCta, pulse: false);
         Log.Debug(Log.LogCategory.Hud,
             $"[cta] EndTurn={endTurnCta} NextTerritory={nextCta} (isHuman={isHuman}, " +
-            $"hasActionable={hasActionable}, allVisited={allVisited}, " +
+            $"hasActionable={hasActionable}, canStepTerritory={canStepTerritory}, " +
+            $"allVisited={allVisited}, " +
             $"selExhausted={selExhausted}, revisit={_session.SelectionWasRevisit}, " +
             $"automateExhausted={_isAutomateExhausted()})");
         // Automate toggle: enabled on a human turn with actions remaining
@@ -1312,6 +1321,32 @@ public class GameOperations
             {
                 return true;
             }
+        }
+        return false;
+    }
+
+    /// <summary>
+    /// True iff a Next/Previous Territory press would actually land
+    /// somewhere: some capital-bearing current-player territory OTHER
+    /// than the current selection has an available action. Mirrors
+    /// <c>GameController.StepTerritorySelection</c>, whose walk covers
+    /// the same set and never revisits the current selection (matched
+    /// by capital coord) — so this is exactly "the press is not a
+    /// no-op". Drives the star button's enabled state and CTA.
+    /// </summary>
+    private bool CanStepToAnotherTerritory()
+    {
+        PlayerId color = _state.Turns.CurrentPlayer.Id;
+        HexCoord? selectedCapital = _session.SelectedTerritory?.Capital;
+        foreach (Territory territory in
+            TerritoryLookup.OwnedCapitalBearing(_state.Territories, color))
+        {
+            if (selectedCapital.HasValue
+                && territory.Capital!.Value.Equals(selectedCapital.Value))
+            {
+                continue;
+            }
+            if (TerritoryHasAvailableAction(territory)) return true;
         }
         return false;
     }

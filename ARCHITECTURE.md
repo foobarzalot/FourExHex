@@ -150,7 +150,10 @@ CONTROLLER (pure C#) ─ GameController
       → _aiDriver.RunUntilHumanOrDone (drives AI seats incl. neutral)
 
   single UI update path:
-    RefreshViews() → _hud.Refresh(state, session, hasActionable)
+    RefreshViews() → _hud.Refresh(state, session, hasActionable, canStepTerritory)
+           // canStepTerritory = some capital-bearing territory OTHER than
+           // the selection is actionable (no selection: hasActionable) —
+           // i.e. a Next/Previous Territory press would land somewhere
       → _map.RefreshOccupantVisuals(currentPlayer, tr., visitedCapitals)
            // visitedCapitals = VisitedThisTurnCapitals minus the selected
            // first-visit ("worked") territory's capital — its pulse stays
@@ -159,7 +162,7 @@ CONTROLLER (pure C#) ─ GameController
            // shouldLight = !hasActionable || (all actionable territories
            // visited && (selection exhausted/null || automate-exhausted));
            // first light sets EndTurnCtaLatched (sticky; see SessionState)
-      → _hud.SetCta(NextTerritory, isHuman && hasActionable
+      → _hud.SetCta(NextTerritory, isHuman && canStepTerritory
            && (selExhausted || SelectionWasRevisit) && !endTurnCta)
       → _onAfterRefresh?.Invoke() (Preview cue hook; null in ordinary play)
 
@@ -209,7 +212,7 @@ VIEWS (Godot Nodes)
     events: BuyRecruit (U cycle) / BuyUnit(level) (radio) / BuildTower / UndoLast / UndoTurn / RedoLast /
       RedoAll / EndTurn / NewGame / MainMenu / NextTerritory / PreviousTerritory / NextUnit / PreviousUnit /
       CancelAction / Automate / EscRequested (Options + ESC) / DefeatContinue / ClaimVictoryWinNow / ClaimVictoryContinue
-    Refresh(state, session, hasAct.) (overlay priority: Winner > PendingDefeatScreen > PendingClaimVictory)
+    Refresh(state, session, hasAct., canStep) (overlay priority: Winner > PendingDefeatScreen > PendingClaimVictory)
     SetMapLabel(text) // campaign "Level XX" | save name (underscores→spaces) | "" procedural
     ShowTutorialMessage(text) / HideTutorialMessage() — bottom-anchored click-through popup
     Buttons are HudIconButton (Button + _Draw) painting glyphs via HudIcons. Static tooltips from
@@ -663,7 +666,8 @@ event Action? EndTurnClicked;
 event Action? NewGameClicked;          // Main: scene reload
 event Action? MainMenuClicked;         // Main: scene change
 event Action? NextTerritoryClicked;    // Tab; skips singletons + no-action
-                                       // territories; no-op if none
+                                       // territories; never revisits the
+                                       // current selection; no-op if none
 event Action? PreviousTerritoryClicked;// Shift+Tab; same skip rules
 event Action? NextUnitClicked;         // N / next-unit button: cycle power tiers
                                        // weakest-first (lex-min unmoved unit per
@@ -682,7 +686,11 @@ event Action? ClaimVictoryWinNowClicked;   // declare win now
 event Action? ClaimVictoryContinueClicked; // dismiss, proceed End Turn
 event Action? ReplayClicked;           // victory overlay; Main → BeginReplay
 
-void Refresh(GameState state, SessionState session, bool hasActionableRemaining);
+void Refresh(GameState state, SessionState session, bool hasActionableRemaining,
+             bool canStepTerritory);   // both controller-derived: hasActionable
+                                       // lights End Turn; canStepTerritory
+                                       // enables Next Territory (an actionable
+                                       // territory other than the selection)
 void SetMapLabel(string text);         // one-time; "Level XX" / save name / "" (procedural)
 void ShowTutorialMessage(string text); // bottom popup; click-through (Ignore)
 void ShowTappableTutorialMessage(string text); // same panel + full-viewport tap
@@ -700,7 +708,8 @@ void SetReplayAvailable(bool available); // toggle victory-overlay Replay button
 // DefeatContinue, NextTerritory). pulse: game-side steady (false) — EndTurn
 // when the human is out of moves OR has visited every actionable territory
 // and finished/left the last one (sticky once lit; see EndTurnCtaLatched),
-// NextTerritory when an actionable territory exists and the selection is
+// NextTerritory when canStepTerritory holds (so a disabled star never
+// renders the CTA) and the selection is
 // exhausted or a revisit — suppressed while the EndTurn CTA holds; Tutorial
 // Preview beats pulse (Tween on Modulate.a, 1.0↔0.55). claim/defeat/build
 // CTAs are Preview-only, default true. Both game-side CTAs are human-only.
@@ -745,7 +754,7 @@ Cues hide the panel during AI turns mid-tutorial, but leave it once the script i
 
 **HUD icon layer.** Play HUD and map-editor HUD render action buttons through a shared `HudIconButton : Button` overriding `_Draw` to paint a programmatic glyph. Helpers live in static `HudIcons` — `DrawUnit` (1/2/3 rings + Commander dot), `DrawTower`, `DrawTree`, `DrawCapital`, `DrawHand` (all reused by `HexPaletteButton`), `DrawCurvedArrow` (single + nested-doubled for Undo Last/All / Redo Last/All), `DrawEndTurnTriangle`, `DrawGear`, `DrawAutomate` (the gear plus an enlarged dark hub holding a play triangle, or pause bars while `HudIconButton.AutomateRunning` is set). The two "next" buttons (`DrawNextUnit`, `DrawNextTerritory`) share an arrow-above-symbol composition via private `DrawNextArrow`: a horizontal math-vector arrow (line + filled arrowhead, `headLen = 0.468r`, `headHalf = 0.255r`) atop the per-button symbol (Recruit ring vs gold capital star, shifted down `0.20r`). Stroke-only glyphs (recruit ring, undo/redo arrows, next-arrow line, End Turn triangle) paint white on the dark bar, flipping black via `HudIconButton.CtaActive` while the End Turn CTA stylebox is on.
 
-Play HUD's right-side cluster orders `NextUnit → NextTerritory → EndTurn (→ Options in landscape)`. `NextUnit` fires `NextUnitClicked` (same as N); its `Selected` mirrors `SessionState.RepeatedMovement` (gated on the button being enabled), `Disabled` mirrors `MovementRules.HasUnmovedUnitsOwnedBy` on the selected territory — greyed with tooltip "No unmoved units to cycle".
+Play HUD's right-side cluster orders `NextUnit → NextTerritory → EndTurn (→ Options in landscape)`. `NextUnit` fires `NextUnitClicked` (same as N); its `Selected` mirrors `SessionState.RepeatedMovement` (gated on the button being enabled), `Disabled` mirrors `MovementRules.HasUnmovedUnitsOwnedBy` on the selected territory — greyed with tooltip "No unmoved units to cycle". `NextTerritory` fires `NextTerritoryClicked` (same as Tab); its `Disabled` mirrors the controller's `canStepTerritory` flag (an actionable territory other than the current selection exists — the exact condition under which the Tab walk changes the selection) — greyed with tooltip "No other territory to act in". Tab/Shift+Tab bypass the button, so the controller's no-op early-return remains the hotkey guard.
 
 Static tooltips ("`<label> — <hotkey>`") owned by `HudIconButton.DefaultTooltip(HudIcon)` — the single icon→tooltip mapping for the play HUD, map editor, and `HudView.Refresh`'s dynamic fallback, with the wording itself resolved from the string store (`hud.tooltip.*`). The four Buy buttons and Build Tower override the tooltip live in `Refresh`: "Buy `<level>` (Ng) — U" / "Build Tower (15g) — T" when enabled, else the disabled reason ("No territory selected", "Selected territory has no capital", "Selected territory can't afford a captain (30g)"). Buy and Build stay visible with a disabled-with-reason tooltip so layout doesn't shift. The Turn/Gold labels and player-swatch bar have fixed `CustomMinimumSize.X` (swatch bar reserves every slot at enlarged width so the highlight moves without changing width) so later buttons never reflow.
 
@@ -957,7 +966,7 @@ GameController.OnTileClicked
   │     ├─ session.SelectedTerritory = territory
   │     ├─ _map.ShowHighlight(territory)
   │     └─ RefreshViews()
-  │           ├─ _hud.Refresh(state, session, hasActionable)
+  │           ├─ _hud.Refresh(state, session, hasActionable, canStepTerritory)
   │           └─ _map.RefreshOccupantVisuals(color, treasury)
   └─ tile has unmoved own unit → enter MovingUnit mode
         ├─ session.Mode = MovingUnit

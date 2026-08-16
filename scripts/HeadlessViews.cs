@@ -74,7 +74,8 @@ public sealed class HeadlessHudView : IHudView
     public event Action? TutorialMessageTapped;
 #pragma warning restore CS0067
 
-    public void Refresh(GameState state, SessionState session, bool hasActionableRemaining) { }
+    public void Refresh(GameState state, SessionState session, bool hasActionableRemaining,
+        bool canStepTerritory) { }
     public void SetMapLabel(string text) { }
     public void ShowTransientBanner(string text) { }
     public void ShowAchievementBanner(string text) { }

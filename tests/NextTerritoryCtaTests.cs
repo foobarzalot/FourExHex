@@ -179,6 +179,104 @@ public class NextTerritoryCtaTests
     }
 
     [Fact]
+    public void SelectedIsOnlyActionable_CanStepTerritoryIsFalse()
+    {
+        var f = BuildTwoRedTerritoriesFixture();
+
+        // Drain Territory B; A keeps its 10g seed. Select A: it is the
+        // ONLY actionable territory, and the Tab walk never revisits the
+        // current selection — a press would be a no-op, so the button
+        // flag must be off even though hasActionable is still on.
+        f.state.Treasury.SetGold(f.redB.Capital!.Value, 0);
+        f.map.SimulateClick(f.state.Grid.Get(f.redA.Capital!.Value));
+
+        Assert.Same(f.redA, f.session.SelectedTerritory);
+        Assert.True(f.hud.LastHasActionableRemaining);
+        Assert.False(f.hud.LastCanStepTerritory);
+        Assert.False(f.hud.NextTerritoryCtaActive);
+    }
+
+    [Fact]
+    public void OtherTerritoryActionable_CanStepTerritoryIsTrue()
+    {
+        var f = BuildTwoRedTerritoriesFixture();
+
+        // Both territories keep their 10g seed. Select A: B is an
+        // actionable "other" stop in the cycle → the press would land
+        // somewhere → flag on.
+        f.map.SimulateClick(f.state.Grid.Get(f.redA.Capital!.Value));
+
+        Assert.Same(f.redA, f.session.SelectedTerritory);
+        Assert.True(f.hud.LastCanStepTerritory);
+    }
+
+    [Fact]
+    public void NothingActionable_CanStepTerritoryIsFalse()
+    {
+        var f = BuildTwoRedTerritoriesFixture();
+
+        // Drain both capitals; no units anywhere → nothing actionable
+        // at all → flag off (same as the old hasActionable gate).
+        f.state.Treasury.SetGold(f.redA.Capital!.Value, 0);
+        f.state.Treasury.SetGold(f.redB.Capital!.Value, 0);
+        f.map.SimulateClick(f.state.Grid.Get(f.redA.Capital!.Value));
+
+        Assert.Same(f.redA, f.session.SelectedTerritory);
+        Assert.False(f.hud.LastHasActionableRemaining);
+        Assert.False(f.hud.LastCanStepTerritory);
+    }
+
+    [Fact]
+    public void NoSelection_OneActionable_CanStepTerritoryIsTrue()
+    {
+        // With no selection the walk visits every territory, so any
+        // actionable territory makes the press land → hasActionable
+        // governs the flag.
+        var red = new Player("Red", PlayerId.FromIndex(0));
+        var blue = new Player("Blue", PlayerId.FromIndex(1));
+        var players = new List<Player> { red, blue };
+        var grid = TestHelpers.BuildRectGrid(5, 2, blue.Id);
+        grid.Get(HexCoord.FromOffset(0, 1))!.Owner = red.Id;
+        grid.Get(HexCoord.FromOffset(1, 1))!.Owner = red.Id;
+        IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
+        var state = new GameState(grid, territories, players, new TurnState(players), new Treasury());
+        var session = new SessionState();
+        session.ClaimVictoryPromptedHighestThreshold[red.Id] = 90;
+        session.ClaimVictoryPromptedHighestThreshold[blue.Id] = 90;
+        var map = new MockHexMapView();
+        var hud = new MockHudView();
+        var controller = new GameController(state, session, map, hud,
+            autoSelectFirstTerritory: false); // exercise the no-selection branch
+        controller.StartGame();
+
+        Assert.Null(session.SelectedTerritory);
+        Assert.True(hud.LastHasActionableRemaining);
+        Assert.True(hud.LastCanStepTerritory);
+    }
+
+    [Fact]
+    public void RevisitOfOnlyActionableTerritory_DoesNotFireCta()
+    {
+        var f = BuildTwoRedTerritoriesFixture();
+
+        // Tour A then B, drain B, then re-select A (a revisit of a
+        // territory already toured this turn). A is the only actionable
+        // territory left, so the star button is disabled — and a
+        // disabled button must never render the CTA, even though the
+        // revisit condition holds.
+        f.map.SimulateClick(f.state.Grid.Get(f.redA.Capital!.Value));
+        f.map.SimulateClick(f.state.Grid.Get(f.redB.Capital!.Value));
+        f.state.Treasury.SetGold(f.redB.Capital!.Value, 0);
+        f.map.SimulateClick(f.state.Grid.Get(f.redA.Capital!.Value));
+
+        Assert.Same(f.redA, f.session.SelectedTerritory);
+        Assert.True(f.session.SelectionWasRevisit);
+        Assert.True(f.hud.LastHasActionableRemaining);
+        Assert.False(f.hud.LastCanStepTerritory);
+        Assert.False(f.hud.NextTerritoryCtaActive);
+    }
+
+    [Fact]
     public void CurrentPlayerComputer_SuppressesCta_EvenWhenConditionsHold()
     {
         // Red is a Computer player with an actionable territory and no

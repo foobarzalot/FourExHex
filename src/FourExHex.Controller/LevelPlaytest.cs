@@ -291,7 +291,8 @@ internal sealed class PlaytestMetricsHud : IHudView
 
     public IReadOnlyDictionary<int, int> EliminationTurns => _eliminationTurns;
 
-    public void Refresh(GameState state, SessionState session, bool hasActionableRemaining)
+    public void Refresh(GameState state, SessionState session, bool hasActionableRemaining,
+        bool canStepTerritory)
     {
         int[] land = new int[GameSettings.PlayerConfig.Length];
         foreach (HexTile tile in state.Grid.Tiles)

@@ -67,6 +67,7 @@
   "hud.tooltip.redo_hold": "Redo — Y (hold for Redo All)",
   "hud.tooltip.help": "Help Menu — H",
   "hud.tooltip.no_unmoved_units": "No unmoved units to cycle",
+  "hud.tooltip.no_other_territory": "No other territory to act in",
   "hud.tooltip.buy_unit": "Buy {level} ({cost}g) — U",
   "hud.disabled.no_selection": "No territory selected",
   "hud.disabled.no_capital": "Selected territory has no capital",

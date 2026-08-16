@@ -2389,7 +2389,8 @@ public partial class HudView : OrientationHud, IHudView
             $"[recording] chrome {(hide ? "hidden" : "restored")}");
     }
 
-    public void Refresh(GameState state, SessionState session, bool hasActionableRemaining)
+    public void Refresh(GameState state, SessionState session, bool hasActionableRemaining,
+        bool canStepTerritory)
     {
         _hasPendingAction = session.Mode != SessionState.ActionMode.None;
         _turnLabel.Text = state.Turns.TurnNumber.ToString();
@@ -2553,9 +2554,15 @@ public partial class HudView : OrientationHud, IHudView
         bool fogLock = state.FogEnabled && !_fogUndoExempt;
         _undoLastButton.Disabled = fogLock || _undoRedoLocked || !session.Undo.CanUndo;
         _redoLastButton.Disabled = fogLock || _undoRedoLocked || !session.Undo.CanRedo;
-        // Mirrors the End Turn CTA: disabled exactly when the current player
-        // has no actionable territory left (the same flag that lights End Turn).
-        _nextTerritoryButton.Disabled = !hasActionableRemaining;
+        // Next Territory: enabled iff a press would actually move the
+        // selection — some territory OTHER than the current selection has
+        // an available action (controller-derived; the Tab walk never
+        // revisits the current selection, so "current selection is the
+        // only actionable territory" greys the button too).
+        _nextTerritoryButton.Disabled = !canStepTerritory;
+        _nextTerritoryButton.TooltipText = canStepTerritory
+            ? HudIconButton.DefaultTooltip(HudIcon.NextTerritory)
+            : Strings.Get(StringKeys.HudTooltipNoOtherTerritory);
 
         // Next Unit: enabled iff the selected territory has at least one
         // unmoved current-player unit (mirrors the N hotkey's no-op

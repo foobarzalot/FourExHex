@@ -109,6 +109,7 @@ public static class StringKeys
     public const string HudTooltipRedoHold = "hud.tooltip.redo_hold";
     public const string HudTooltipHelp = "hud.tooltip.help";
     public const string HudTooltipNoUnmovedUnits = "hud.tooltip.no_unmoved_units";
+    public const string HudTooltipNoOtherTerritory = "hud.tooltip.no_other_territory";
     public const string HudTooltipBuyUnit = "hud.tooltip.buy_unit";
 
     // Disabled-reason tooltips + their {action} fragments.
