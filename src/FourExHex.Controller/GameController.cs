@@ -380,6 +380,14 @@ public class GameController
         {
             _hud.ShowTransientBanner(waveBanner);
         }
+        // Rising Tides: the tide level + countdown banner, same slot and
+        // guards (the modes are mutually exclusive, so the two banners
+        // never compete for it).
+        string? tideBanner = TideBannerContent.For(_state);
+        if (tideBanner != null && !_previewMode && !_recordingMode)
+        {
+            _hud.ShowTransientBanner(tideBanner);
+        }
         HumanTurnStarted?.Invoke();
     }
 
@@ -441,15 +449,17 @@ public class GameController
     /// exists — the doomed territory is selected even when it has nothing
     /// actionable (the point is to look at it); a capital-less singleton
     /// leaves nothing selected, camera pan only. Mountain-demote steps
-    /// focus the same way — the reprieve is the same tide event. False
-    /// outside Rising Tides or with no pending forecast (the normal
-    /// turn-start selection runs).
+    /// focus the same way — the reprieve is the same tide event. With a
+    /// multi-tile forecast the camera centers the lexicographically
+    /// smallest doomed coord (the plan is ordered by exposure, so [0] is
+    /// not a stable pick). False outside Rising Tides or with no pending
+    /// forecast (the normal turn-start selection runs).
     /// </summary>
     private bool TryFocusPendingTide()
     {
         if (_state.Mode != GameMode.RisingTides) return false;
         if (_state.PendingTide.Count == 0) return false;
-        HexCoord doomed = _state.PendingTide[0].Coord;
+        HexCoord doomed = _state.PendingTide.Min(s => s.Coord);
         Territory? territory = TerritoryLookup.FindOwnedContaining(
             _state.Territories, _state.Turns.CurrentPlayer.Id, doomed);
         if (territory is { HasCapital: true }) SetSelection(territory);

@@ -132,7 +132,7 @@ public static class SaveSerializer
     /// purchase-price retunes). <see cref="Deserialize"/> drops a Replay
     /// block whose stamp doesn't match instead of replaying it divergently.
     /// </summary>
-    public const int CurrentReplayVersion = 3;
+    public const int CurrentReplayVersion = 4;
 
     public static string Serialize(
         GameState state,

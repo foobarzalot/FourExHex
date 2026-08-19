@@ -734,12 +734,17 @@ public class GameOperations
     public void ForecastTideForCurrentPlayer()
     {
         if (_state.Mode != GameMode.RisingTides) return;
+        int round = _state.Turns.TurnNumber;
+        int level = RisingTidesRules.SubmergeBudgetForRound(round);
+        Log.Debug(Log.LogCategory.Tide,
+            $"[tide] T{round} level={level} " +
+            $"risesIn={RisingTidesRules.RoundsUntilTideRise(round)}");
         // The forecast is the FIRST per-turn RNG consumer (it runs right after
         // ReseedRngForCurrentTurn, before any capture or AI draw), so the draw
         // lands at a fixed stream offset and reproduces on resume/replay.
         _state.PendingTide = RisingTidesRules.ForecastSubmerge(
             _state, _state.Turns.CurrentPlayer.Id,
-            budget: RisingTidesRules.SubmergeBudgetPerTurn, rng: TideTieBreakRng());
+            budget: level, rng: TideTieBreakRng());
     }
 
     /// <summary>The RNG for the Rising Tides equal-exposure tie-break:
@@ -799,7 +804,8 @@ public class GameOperations
         if (_state.Mode != GameMode.RisingTides || _state.Turns.TurnNumber <= 1) return;
         HashSet<PlayerId> colorsWithCapitalBefore = ColorsWithCapital(_state.Territories);
         bool changed = RisingTidesRules.SubmergeStep(
-            _state, owner, budget: RisingTidesRules.SubmergeBudgetPerTurn,
+            _state, owner,
+            budget: RisingTidesRules.SubmergeBudgetForRound(_state.Turns.TurnNumber),
             rng: TideTieBreakRng());
         // A submerge removes tiles (or demotes a mountain) — the land/water
         // tessellation is structural, so it needs the coalesced repaint path,

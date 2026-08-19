@@ -200,4 +200,14 @@ public static class GameSettings
         player.IsNone || player.Index < 0 || player.Index >= TowerKillValues.Length
             ? DefaultTowerKillValue
             : TowerKillValues[player.Index];
+
+    /// <summary>
+    /// Rising Tides: rounds between tide-level increments (see
+    /// <see cref="RisingTidesRules.SubmergeBudgetForRound"/>). The tide level
+    /// starts at 1 and rises by 1 every this-many rounds, and the level is the
+    /// per-player-turn submerge budget. <c>Main</c> overrides from
+    /// <c>FOUREXHEX_TIDE_INTERVAL</c> for headless curve sweeps; the model
+    /// never reads the environment, so tests always see the default.
+    /// </summary>
+    public static int TideRiseIntervalRounds = 6;
 }

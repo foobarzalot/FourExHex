@@ -194,6 +194,11 @@ public partial class Main : Node2D
             GameSettings.NeutralDensity = envNeutral;
         if (int.TryParse(OS.GetEnvironment("FOUREXHEX_BARBARIAN_DENSITY"), out int envBarb) && envBarb >= 0)
             GameSettings.BarbarianDensity = envBarb;
+        // Rising Tides escalation knob: rounds between tide-level increments
+        // (level = submerge budget; see RisingTidesRules.SubmergeBudgetForRound).
+        // Lets a 6AI run sweep the pressure curve headlessly.
+        if (int.TryParse(OS.GetEnvironment("FOUREXHEX_TIDE_INTERVAL"), out int envTide) && envTide > 0)
+            GameSettings.TideRiseIntervalRounds = envTide;
         // Diagnostic game-mode override: FOUREXHEX_MODE=RisingTides
         // launches the headless 6AI run in Rising Tides so the flood / last-
         // player-standing flow can be regression-tested. Absent/unknown → no-op.

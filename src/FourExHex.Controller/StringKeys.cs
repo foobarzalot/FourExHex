@@ -51,6 +51,11 @@ public static class StringKeys
     public const string VikingTurnsOne = "viking.turns.one";
     public const string VikingTurnsMany = "viking.turns.many";
 
+    // Rising Tides level banner (TideBannerContent).
+    public const string TideLevelBanner = "tide.level.banner";
+    public const string TideTurnsOne = "tide.turns.one";
+    public const string TideTurnsMany = "tide.turns.many";
+
     // Tutorial Preview instructions (TutorialInstructionText).
     public const string TutorialEndTurn = "tutorial.end_turn";
     public const string TutorialTowerPlace = "tutorial.tower.place";

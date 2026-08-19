@@ -425,4 +425,34 @@ public class RisingTidesRulesTests
             },
             plan.Select(s => s.Coord).ToArray());
     }
+
+    // --- SubmergeBudgetForRound / RoundsUntilTideRise --------------------
+
+    [Theory]
+    [InlineData(1, 1)]
+    [InlineData(6, 1)]
+    [InlineData(7, 2)]
+    [InlineData(12, 2)]
+    [InlineData(13, 3)]
+    public void SubmergeBudgetForRound_StartsAtOneAndStepsEverySixRounds(int round, int expected)
+    {
+        Assert.Equal(expected, RisingTidesRules.SubmergeBudgetForRound(round));
+    }
+
+    [Fact]
+    public void SubmergeBudgetForRound_RoundBelowOne_ClampsToLevelOne()
+    {
+        Assert.Equal(1, RisingTidesRules.SubmergeBudgetForRound(0));
+    }
+
+    [Theory]
+    [InlineData(1, 6)]
+    [InlineData(5, 2)]
+    [InlineData(6, 1)]
+    [InlineData(7, 6)]
+    [InlineData(12, 1)]
+    public void RoundsUntilTideRise_CountsDownToNextIncrement(int round, int expected)
+    {
+        Assert.Equal(expected, RisingTidesRules.RoundsUntilTideRise(round));
+    }
 }

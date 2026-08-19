@@ -30,14 +30,30 @@ using System.Linq;
 public static class RisingTidesRules
 {
     /// <summary>
-    /// Shore tiles the rising tide submerges per player-turn — the erosion
-    /// rate of the mode. The Controller passes this as the
+    /// The tide level for <paramref name="round"/> — how many shore tiles the
+    /// rising tide submerges per player-turn, the erosion rate of the mode.
+    /// Starts at 1 and rises by 1 every
+    /// <see cref="GameSettings.TideRiseIntervalRounds"/> rounds (rounds 1..N
+    /// are level 1, N+1..2N level 2, ...), so the flood escalates from a slow
+    /// telegraph into an existential clock. The Controller passes this as the
     /// <c>budget</c> of <see cref="ForecastSubmerge"/> /
     /// <see cref="SubmergeStep"/> for both real player turns and the
     /// phantom turns of eliminated/neutral seats, so the two paths cannot
-    /// drift apart.
+    /// drift apart. Integer-only and derived purely from the round number —
+    /// no hidden accumulated state, so saves and replays need no extra field.
     /// </summary>
-    public const int SubmergeBudgetPerTurn = 1;
+    public static int SubmergeBudgetForRound(int round)
+        => 1 + (Math.Max(round, 1) - 1) / GameSettings.TideRiseIntervalRounds;
+
+    /// <summary>
+    /// Rounds until the tide level next rises, counting from
+    /// <paramref name="round"/>: the full interval at the first round of a
+    /// level, 1 at its last round ("rises in 1 turn"). Drives the turn-start
+    /// countdown banner.
+    /// </summary>
+    public static int RoundsUntilTideRise(int round)
+        => GameSettings.TideRiseIntervalRounds
+            - ((Math.Max(round, 1) - 1) % GameSettings.TideRiseIntervalRounds);
 
     /// <summary>
     /// The land tiles owned by <paramref name="owner"/> that are shores — i.e.

@@ -20,14 +20,14 @@ public partial class GameControllerTests
         public Player Red { get; }
         public Player Blue { get; }
 
-        public TidesGame(HexGrid grid, GameMode mode)
+        public TidesGame(HexGrid grid, GameMode mode, int turnNumber = 1)
         {
             Red = new Player("Red", PlayerId.FromIndex(0));
             Blue = new Player("Blue", PlayerId.FromIndex(1));
             var players = new List<Player> { Red, Blue };
             IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
             State = new GameState(
-                grid, territories, players, new TurnState(players), new Treasury(),
+                grid, territories, players, new TurnState(players, 0, turnNumber), new Treasury(),
                 waterCoords: null, mode: mode);
             Session = new SessionState();
             Map = new MockHexMapView();
@@ -342,5 +342,74 @@ public partial class GameControllerTests
         Assert.Null(g.State.Grid.Get(dest.Coord)?.Unit); // placement undone
         Assert.Equal(afterSubmerge, g.State.Grid.Count);  // tile stayed drowned
         Assert.Contains(drowned, g.State.WaterCoords);
+    }
+
+    [Fact]
+    public void RisingTides_TideBannerShownAtEveryHumanTurnStart()
+    {
+        // The tide level + countdown banner shows at every human turn start,
+        // via the same transient-banner slot as the Viking wave banner.
+        var g = new TidesGame(TwoBlocks(), GameMode.RisingTides);
+
+        // Turn 1, Red (game start counts as a human turn start).
+        Assert.Equal("Tide level 1 — rising in 6 turns", g.Hud.TransientBanners.Last());
+        int seen = g.Hud.TransientBanners.Count;
+
+        g.Hud.ClickEndTurn(); // Blue's turn 1: their own banner
+        Assert.Equal(seen + 1, g.Hud.TransientBanners.Count);
+        Assert.Equal("Tide level 1 — rising in 6 turns", g.Hud.TransientBanners.Last());
+    }
+
+    [Fact]
+    public void RisingTides_LastRoundOfLevel_BannerCountsDownSingularTurn()
+    {
+        var g = new TidesGame(TwoBlocks(), GameMode.RisingTides, turnNumber: 6);
+        Assert.Equal("Tide level 1 — rising in 1 turn", g.Hud.TransientBanners.Last());
+    }
+
+    [Fact]
+    public void RisingTides_LateRound_ForecastsLevelTilesAndAppliesAll()
+    {
+        // Round 7 is tide level 2: the turn-start forecast holds two steps
+        // and the end-of-turn apply submerges both.
+        var g = new TidesGame(TwoBlocks(), GameMode.RisingTides, turnNumber: 7);
+
+        Assert.Equal("Tide level 2 — rising in 6 turns", g.Hud.TransientBanners.Last());
+        Assert.Equal(2, g.State.PendingTide.Count);
+        int before = g.State.Grid.Count;
+
+        g.Hud.ClickEndTurn();
+
+        Assert.Equal(before - 2, g.State.Grid.Count);
+        Assert.Equal(2, g.State.WaterCoords.Count);
+    }
+
+    [Fact]
+    public void RisingTides_MultiTileForecast_PansToLexMinDoomedTile()
+    {
+        // With more than one doomed tile the camera pans to the first in
+        // lex order — NOT PendingTide[0]. The isolated Red singleton at
+        // (5,0) has the maximum water-border weight, so it is always the
+        // forecast's FIRST pick; at level 2 the second pick comes from the
+        // main Red block and is lex-smaller, so the pan target differs
+        // from PendingTide[0] by construction.
+        var grid = TestHelpers.BuildRectGrid(6, 2, PlayerId.FromIndex(1));
+        for (int row = 0; row < 2; row++)
+            for (int col = 0; col < 2; col++)
+                grid.Get(HexCoord.FromOffset(col, row))!.Owner = PlayerId.FromIndex(0);
+        HexCoord singleton = HexCoord.FromOffset(5, 0);
+        grid.Get(singleton)!.Owner = PlayerId.FromIndex(0);
+        grid.Remove(HexCoord.FromOffset(4, 0));
+        grid.Remove(HexCoord.FromOffset(4, 1));
+        grid.Remove(HexCoord.FromOffset(5, 1));
+        var g = new TidesGame(grid, GameMode.RisingTides, turnNumber: 7);
+
+        Assert.Equal(2, g.State.PendingTide.Count);
+        Assert.Equal(singleton, g.State.PendingTide[0].Coord);
+        HexCoord lexMin = g.State.PendingTide.Select(s => s.Coord).Min();
+        Assert.NotEqual(singleton, lexMin);
+        Assert.Equal(lexMin, g.Map.LastCenteredCoord);
+        Assert.NotNull(g.Session.SelectedTerritory);
+        Assert.Contains(lexMin, g.Session.SelectedTerritory!.Coords);
     }
 }
