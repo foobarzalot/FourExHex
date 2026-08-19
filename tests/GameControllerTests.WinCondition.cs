@@ -317,4 +317,46 @@ public partial class GameControllerTests
 
         Assert.False(g.Session.Undo.CanUndo);
     }
+
+    [Fact]
+    public void BuyAndPlace_WinningCapture_ExitsBuyMode()
+    {
+        // Same fixture as Capture_LastEnemyHex_DeclaresWinner, but the
+        // winning capture comes from BUYING a Recruit onto the last Blue
+        // tile. The capital can afford several more Recruits, so the
+        // post-buy stay-in-buy-mode QoL branch would otherwise fire and
+        // repaint the "Click to place a ..." hint over the victory
+        // overlay (#246).
+        var red = new Player("Red", PlayerId.FromIndex(0));
+        var blue = new Player("Blue", PlayerId.FromIndex(1));
+        var players = new List<Player> { red, blue };
+
+        var grid = TestHelpers.BuildRectGrid(4, 1, red.Id);
+        grid.Get(HexCoord.FromOffset(3, 0))!.Owner = blue.Id;
+
+        IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
+        var state = new GameState(grid, territories, players, new TurnState(players), new Treasury());
+        var session = new SessionState();
+        var map = new MockHexMapView();
+        var hud = new MockHudView();
+        var controller = new GameController(state, session, map, hud);
+        controller.StartGame();
+
+        // Select Red's territory and bankroll it so a follow-up Recruit
+        // stays affordable after the winning buy.
+        map.SimulateClick(grid.Get(HexCoord.FromOffset(0, 0)));
+        HexCoord capital = session.SelectedTerritory!.Capital!.Value;
+        state.Treasury.SetGold(capital, 100);
+
+        hud.ClickBuyRecruit();
+        Assert.Equal(SessionState.ActionMode.BuyingRecruit, session.Mode);
+
+        // Buy-and-place onto the last Blue tile — domination win.
+        map.SimulateClick(grid.Get(HexCoord.FromOffset(3, 0)));
+
+        Assert.True(session.IsGameOver);
+        Assert.Equal(red.Id, session.Winner);
+        Assert.Equal(SessionState.ActionMode.None, session.Mode);
+        Assert.Null(session.MoveSource);
+    }
 }

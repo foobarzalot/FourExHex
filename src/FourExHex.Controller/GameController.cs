@@ -1485,6 +1485,17 @@ public class GameController
             return;
         }
 
+        // A winning buy ends the session: DeclareWinner already cleared
+        // the pending intent — don't re-enter buy mode over the victory
+        // overlay.
+        if (_session.IsGameOver)
+        {
+            Log.Debug(Log.LogCategory.Hud,
+                $"[buy] win during buy-and-place at {destination} — exiting buy mode");
+            FinishPendingAction();
+            return;
+        }
+
         // QoL: stay in a buy mode for the highest level the (possibly
         // rebound) territory can still afford that is at most the level
         // just bought. Stay-at-same-level if still affordable; otherwise

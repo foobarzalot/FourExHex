@@ -2852,6 +2852,9 @@ public partial class HudView : OrientationHud, IHudView
 
     private static string? ComputeActionHint(GameState state, SessionState session)
     {
+        // Once the game is over, the victory overlay owns the screen —
+        // never surface a gameplay hint on top of it, whatever Mode says.
+        if (session.Winner.HasValue) return null;
         UnitLevel? buyLevel = SessionState.BuyModeLevel(session.Mode);
         if (buyLevel.HasValue)
         {
