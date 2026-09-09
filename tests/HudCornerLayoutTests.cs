@@ -180,4 +180,26 @@ public class HudCornerLayoutTests
         Assert.True(HudCornerLayout.CornersFit(
             MiniLandscapeW, inlineChipsW, ChromeW, MiniLandscape, Pad));
     }
+
+    // --- Rails share the corner blocks' margin ---
+
+    [Fact]
+    public void RailButtons_AlignWithTheCornerStrip_AtZeroInsets()
+    {
+        var none = new LogicalSafeInsets(0f, 0f, 0f, 0f);
+        float railButtonEdge = HudCornerLayout.RailSideOffset(none, Pad, UiMetrics.GutterPx) + UiMetrics.GutterPx;
+        Assert.Equal(HudCornerLayout.SideOffset(none, Pad), railButtonEdge);
+        Assert.Equal(Pad, railButtonEdge);
+    }
+
+    [Fact]
+    public void RailButtons_TakeTheFullNotchInset_UnlikeTheCornerStrip()
+    {
+        // A landscape notch: the rail's critical buttons must clear it in
+        // full; the corner strip only backs off by the partial nudge.
+        var notch = new LogicalSafeInsets(0f, 21f, 47f, 0f);
+        float railButtonEdge = HudCornerLayout.RailSideOffset(notch, Pad, UiMetrics.GutterPx) + UiMetrics.GutterPx;
+        Assert.Equal(47f + Pad, railButtonEdge);
+        Assert.True(railButtonEdge > HudCornerLayout.SideOffset(notch, Pad));
+    }
 }

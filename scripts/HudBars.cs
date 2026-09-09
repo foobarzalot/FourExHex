@@ -16,10 +16,12 @@ using Godot;
 /// </summary>
 public static class HudBars
 {
-    /// <summary>Side-rail width in logical px (spec §6). Holds one column of
-    /// 68-px HudIconButtons (<see cref="UiMetrics.TouchButtonSizePx"/>) with
-    /// a small side inset.</summary>
-    public const float RailWidth = 78f;
+    /// <summary>Side-rail width in logical px (spec §6): one column of
+    /// 68-px HudIconButtons (<see cref="UiMetrics.TouchButtonSizePx"/>) plus
+    /// the rail's gutter inset on each side, so the inner group is exactly
+    /// one button wide and a right-hand rail's buttons end flush with the
+    /// corner strip beneath it rather than spilling past the panel.</summary>
+    public const float RailWidth = UiMetrics.TouchButtonSizePx + UiMetrics.GutterPx * 2f;
 
     /// <summary>Bottom-bar height in portrait. Sized for two rows of 68-px
     /// HudIconButtons (the buy palette panel chrome adds a little extra
@@ -117,11 +119,12 @@ public static class HudBars
         // turn) — they must NEVER overlap the notch regardless of which
         // way the phone is rotated. Use max(safe.Left, safe.Right) on
         // BOTH sides so the inset is symmetric and orientation-safe; the
-        // corner zones (display chips, options) skip the safe inset and
-        // get the unused corner real estate instead.
-        const float edgePad = UiMetrics.GutterPx;
-        float notchSafe = Mathf.Max(safe.Left, safe.Right);
-        float sideOffset = notchSafe + edgePad;
+        // corner blocks (chips, options, the bottom strips) take only a
+        // partial nudge instead. At zero insets the rail's buttons land
+        // exactly on the corner pad, level with the undo/redo and End Turn
+        // strips beneath them (HudCornerLayout.RailSideOffset).
+        float sideOffset = HudCornerLayout.RailSideOffset(
+            safe, UiMetrics.CornerZoneEdgePadPx, UiMetrics.GutterPx);
 
         var rail = new Panel
         {

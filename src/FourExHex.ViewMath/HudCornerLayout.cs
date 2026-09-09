@@ -48,6 +48,19 @@ public static class HudCornerLayout
     public static float SideOffset(LogicalSafeInsets safe, float edgePadPx)
         => edgePadPx + System.MathF.Max(safe.Left, safe.Right) * CornerNudgeFactor;
 
+    /// <summary>
+    /// Horizontal offset of a landscape rail Panel from its viewport edge.
+    /// The rail's buttons sit <paramref name="gutterPx"/> inside the panel,
+    /// so the offset is chosen to land the button edge at the corner pad —
+    /// level with the corner strip's buttons (<see cref="SideOffset"/>) at
+    /// zero insets. A landscape notch is taken in full here (the rail holds
+    /// the critical action buttons), so with a notch the rail sits further
+    /// in than the partially-nudged corner strip; that asymmetry is by
+    /// design.
+    /// </summary>
+    public static float RailSideOffset(LogicalSafeInsets safe, float cornerPadPx, float gutterPx)
+        => System.MathF.Max(safe.Left, safe.Right) + cornerPadPx - gutterPx;
+
     /// <summary>Inset-aware <see cref="CornerGap"/>: both zones sit at
     /// <see cref="SideOffset"/> rather than the bare pad, so the clear space
     /// shrinks by twice the side nudge. Zero insets degrade to the legacy

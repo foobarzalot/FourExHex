@@ -555,8 +555,8 @@ public partial class MapEditorHudView : OrientationHud
 
     /// <summary>Widen the left rail on compact so the paint tools' 2nd column
     /// fits. Two 68-px columns + 8-px gutter + 8-px rail padding
-    /// each side = 160; the default 78 stays for the single-column case and
-    /// the gameplay HUD.</summary>
+    /// each side = 160; the default single-column width stays for the
+    /// gameplay HUD.</summary>
     protected override float LeftRailWidth =>
         Compact ? 160f : HudBars.RailWidth;
 

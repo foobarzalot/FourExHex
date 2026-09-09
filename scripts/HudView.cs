@@ -190,7 +190,7 @@ public partial class HudView : OrientationHud, IHudView
         // flip Vertical/horizontal between portrait rows and landscape rails.
         _actionCluster = new BoxContainer { MouseFilter = Control.MouseFilterEnum.Pass };
         _actionCluster.AddThemeConstantOverride("separation", 8);
-        _undoCluster = new HBoxContainer { MouseFilter = Control.MouseFilterEnum.Pass };
+        _undoCluster = new HBoxContainer { Name = "UndoCluster", MouseFilter = Control.MouseFilterEnum.Pass };
         _undoCluster.AddThemeConstantOverride("separation", 8);
         _controlsCluster = new BoxContainer { MouseFilter = Control.MouseFilterEnum.Pass };
         _controlsCluster.AddThemeConstantOverride("separation", 8);
@@ -807,13 +807,13 @@ public partial class HudView : OrientationHud, IHudView
         // In expanded landscape both rails bottom-anchor their content
         // (alignBottom = true), so a corner-pinned block would collide with
         // the bottom-most rail button. Push each rail group's bottom edge UP
-        // by the corner block's footprint: End Turn under the right rail,
-        // the undo/redo cluster under the left. Compact landscape centers
-        // the groups vertically and doesn't need the clearance.
+        // by the bottom stack's footprint — the seed label in the corner
+        // plus the strip lifted above it (HudBottomStripLayout); both rails
+        // take it so they end level. Compact landscape centers the groups
+        // vertically and doesn't need the clearance.
         if (!Compact)
         {
-            const float cornerClearance =
-                UiMetrics.TouchButtonSizePx + 20f;   // button + spacing
+            float cornerClearance = RailCornerClearance();
             if (RightRailGroup != null) RightRailGroup.OffsetBottom -= cornerClearance;
             if (LeftRailGroup != null) LeftRailGroup.OffsetBottom -= cornerClearance;
         }
@@ -858,18 +858,30 @@ public partial class HudView : OrientationHud, IHudView
     private float CornerSideOffset()
         => HudCornerLayout.SideOffset(SafeArea.Current, CornerStripPad);
 
+    /// <summary>Measured height of the seed label at its current font, so
+    /// the bottom-left stack clears the real line height rather than a
+    /// guess.</summary>
+    private float SeedLabelHeight() => _seedLabel.GetCombinedMinimumSize().Y;
+
+    /// <summary>How far the expanded rails back off the bottom baseline:
+    /// seed label + gap + strip button + gap.</summary>
+    private float RailCornerClearance()
+        => HudBottomStripLayout.RailClearance(
+            UiMetrics.TouchButtonSizePx, HudBottomStripLayout.LabelGapPx, SeedLabelHeight());
+
     /// <summary>Corner-anchor a block to the viewport's bottom edge, its
     /// outer edge <paramref name="sideOffset"/> px in from the chosen side,
     /// as a direct child of this CanvasLayer (no container interference).
     /// The bottom offset mirrors the top corner zones' top offset
-    /// (safe.Top + pad) so top and bottom chrome sit at matching distances
-    /// from their screen edges; the home indicator strip still routes taps
-    /// through. Returns the offset of the block's inner edge, so the caller
+    /// (safe.Top + pad), lifted by the seed label that sits in the corner
+    /// beneath both strips (HudBottomStripLayout.StripBottomOffset); the
+    /// home indicator strip still routes taps through. Returns the offset of the block's inner edge, so the caller
     /// can chain the next block toward the middle without knowing this
     /// one's width.</summary>
     private float PinBottomCorner(Control block, bool left, float sideOffset)
     {
-        float bottomOffset = SafeArea.Current.Top + CornerStripPad;
+        float bottomOffset = HudBottomStripLayout.StripBottomOffset(
+            SafeArea.Current, CornerStripPad, SeedLabelHeight(), HudBottomStripLayout.LabelGapPx);
         block.AnchorLeft = left ? 0f : 1f;
         block.AnchorRight = left ? 0f : 1f;
         block.AnchorTop = 1f;
@@ -1020,16 +1032,15 @@ public partial class HudView : OrientationHud, IHudView
         // Bottom-left, INSIDE the safe-area-bottom strip — below the
         // button rows so it sits where the iPhone home indicator lives.
         // Bottom margin sits just inside the safe-area; nudged up so the
-        // label doesn't graze the indicator on iPhone. In landscape the
-        // undo/redo cluster owns the bottom-left corner, so the label
-        // lifts above its footprint.
-        float seedBottom = -10f;
-        if (Orientation == ScreenOrientation.Landscape)
-        {
-            seedBottom = -(SafeArea.Current.Top + CornerStripPad
-                + UiMetrics.TouchButtonSizePx + 10f);
-        }
-        float seedTop = seedBottom - 22f;
+        // label doesn't graze the indicator on iPhone. Same spot in both
+        // orientations: in landscape the undo/redo strip and the expanded
+        // rails lift above it (PinBottomCorner / BuildLandscapeBars). The
+        // label grows upward from its bottom edge so a taller-than-expected
+        // line moves toward the strip's gap, never off-screen.
+        float seedBottom = -HudBottomStripLayout.LabelBottomOffset(CornerStripPad);
+        float seedHeight = SeedLabelHeight();
+        float seedTop = seedBottom - seedHeight;
+        _seedLabel.GrowVertical = Control.GrowDirection.Begin;
         _seedLabel.OffsetTop = seedTop;
         _seedLabel.OffsetBottom = seedBottom;
         // Nudged right of the bottom-bar inner padding (16 px) so the label
@@ -1040,8 +1051,75 @@ public partial class HudView : OrientationHud, IHudView
         _seedLabel.OffsetLeft = seedLeft;
         _seedLabel.OffsetRight = seedLeft + 280f;
         Log.Debug(Log.LogCategory.Render,
-            $"HudView: seed label in safe-area bottom-left ({Orientation}).");
+            $"HudView: seed label in safe-area bottom-left ({Orientation}) " +
+            $"top={seedTop:0.#} bottom={seedBottom:0.#} height={seedHeight:0.#} " +
+            $"railClearance={(Orientation == ScreenOrientation.Landscape && !Compact ? RailCornerClearance() : 0f):0.#}.");
+        if (Orientation == ScreenOrientation.Landscape && _seedLabel.Visible)
+        {
+            // Deferred so the layout pass has resolved the rail group's and
+            // the strip's sizes before the rects are compared.
+            CallDeferred(nameof(LogSeedLabelFit));
+        }
         PositionTutorialOverlay();
+    }
+
+    /// <summary>
+    /// Permanent overlap guard for the landscape bottom-left stack (rail →
+    /// undo/redo strip → seed label). The three are placed by unrelated
+    /// mechanisms (a container, corner anchors, corner anchors), so a lift
+    /// that comes up short only shows as a button painted over the map name. Measuring the rects here lands it in the
+    /// log instead: <c>[seed-fit] OVERLAP</c> under Render.
+    /// </summary>
+    private void LogSeedLabelFit()
+    {
+        if (!IsInstanceValid(_seedLabel) || !IsInstanceValid(_undoCluster)) return;
+        if (Orientation != ScreenOrientation.Landscape || !_seedLabel.Visible) return;
+
+        Rect2 label = _seedLabel.GetGlobalRect();
+        Rect2 strip = _undoCluster.GetGlobalRect();
+        Control? railBlock = LastVisibleChild(LeftRailGroup);
+        float gapToStrip = label.Position.Y - strip.End.Y;
+        float gapToRail = railBlock == null
+            ? float.PositiveInfinity
+            : strip.Position.Y - railBlock.GetGlobalRect().End.Y;
+
+        string culprit = "";
+        float worst = 0f;
+        if (label.Intersects(strip))
+        {
+            worst = Mathf.Min(label.End.Y, strip.End.Y) - Mathf.Max(label.Position.Y, strip.Position.Y);
+            culprit = $"{_undoCluster.Name}×seedLabel";
+        }
+        if (railBlock != null && strip.Intersects(railBlock.GetGlobalRect()))
+        {
+            Rect2 r = railBlock.GetGlobalRect();
+            float bite = Mathf.Min(strip.End.Y, r.End.Y) - Mathf.Max(strip.Position.Y, r.Position.Y);
+            if (bite > worst) { worst = bite; culprit = $"{railBlock.Name}×{_undoCluster.Name}"; }
+        }
+
+        if (worst > 0f)
+        {
+            Log.Warn(Log.LogCategory.Render,
+                $"HudView: [seed-fit] OVERLAP {culprit} by {worst:0.#}px — " +
+                $"label={label.Position.Y:0.#}..{label.End.Y:0.#} strip={strip.Position.Y:0.#}..{strip.End.Y:0.#} " +
+                $"orient={Orientation} compact={Compact}.");
+            return;
+        }
+        Log.Debug(Log.LogCategory.Render,
+            $"HudView: [seed-fit] clear — gapToRail={gapToRail:0.#} gapToStrip={gapToStrip:0.#} " +
+            $"label={label.Position.Y:0.#}..{label.End.Y:0.#} strip={strip.Position.Y:0.#}..{strip.End.Y:0.#} " +
+            $"orient={Orientation} compact={Compact}.");
+    }
+
+    private static Control? LastVisibleChild(Container? group)
+    {
+        if (group == null || !IsInstanceValid(group)) return null;
+        Control? last = null;
+        foreach (Node child in group.GetChildren())
+        {
+            if (child is Control c && c.Visible) last = c;
+        }
+        return last;
     }
 
     /// <summary>Swap collapsed↔expanded variants of the palette + roster
