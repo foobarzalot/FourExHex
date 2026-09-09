@@ -209,6 +209,16 @@ public partial class HexMapView : Node2D, IHexMapView
     // nodes. Stale tiles show only static terrain greyed beneath the dim — no
     // occupant glyphs — so there is no separate stale-occupant layer.
     private TriangleSoup? _fogLayer;
+    // Fog Of War backdrop: an opaque FogCoverColor square this node paints in
+    // its own _Draw — beneath every child layer, water bake included — while
+    // fog is active. The fog hex bake stops at the water rim, and the viewport
+    // clear colour beyond it is the sea colour, so without this a max-zoom-out
+    // pan shows bare "sea" past the fog (issue #250). Board-local and sized by
+    // FogBackdropMath to the farthest the pan clamp can carry the viewport, so
+    // it never needs a per-frame redraw — only on a fog toggle or a zoom-floor
+    // change (UpdateFogBackdrop).
+    private bool _fogBackdropOn;
+    private float _fogBackdropHalf;
     private readonly Dictionary<HexCoord, Node2D> _unitVisuals = new();
     // ---- Arrival-synced move application (issue #163 family) ----
     // On a paced move the ENTIRE destination-side application — capture
@@ -1572,6 +1582,7 @@ public partial class HexMapView : Node2D, IHexMapView
     // Empty (single empty soup) outside Fog Of War.
     private void RedrawFogOverlay()
     {
+        UpdateFogBackdrop();
         if (_fogLayer == null) return;
         if (_fog == null)
         {
@@ -1605,6 +1616,38 @@ public partial class HexMapView : Node2D, IHexMapView
         }
         _fogLayer.SetTriangles(
             bake.Points.ToArray(), bake.Colors.ToArray(), bake.Indices.ToArray());
+    }
+
+    // Resync the backdrop to the current fog state and zoom floor; queues a
+    // redraw only when something changed. Called from every fog overlay
+    // repaint (build, territory rebuild, visibility change incl. fog→null on
+    // game over) and from RecomputeZoomLevels (resize / rotation flip).
+    private void UpdateFogBackdrop()
+    {
+        bool on = _fog != null;
+        float half = on
+            ? FogBackdropMath.HalfExtent(
+                PixelSize.X, PixelSize.Y, GetViewportRect().Size.X, GetViewportRect().Size.Y,
+                _zoomMin, ScrollPaddingPx)
+            : 0f;
+        if (on == _fogBackdropOn && half == _fogBackdropHalf) return;
+        _fogBackdropOn = on;
+        _fogBackdropHalf = half;
+        Log.Debug(Log.LogCategory.Fog,
+            $"[fog] backdrop on={on} half={half:0} center=({PixelSize.X * 0.5f:0},{PixelSize.Y * 0.5f:0}) " +
+            $"vp={GetViewportRect().Size} zoomMin={_zoomMin:0.000}");
+        QueueRedraw();
+    }
+
+    // This node's own drawing renders beneath its children, so the fog
+    // backdrop sits under the water bake and every map layer.
+    public override void _Draw()
+    {
+        if (!_fogBackdropOn) return;
+        Vector2 center = PixelSize * 0.5f;
+        float size = _fogBackdropHalf * 2f;
+        DrawRect(new Rect2(center.X - _fogBackdropHalf, center.Y - _fogBackdropHalf, size, size),
+            FogCoverColor);
     }
 
     // Compute the 6 perimeter colours for a fog/stale hex, fading the tint's alpha
@@ -4774,6 +4817,7 @@ public partial class HexMapView : Node2D, IHexMapView
             $"RecomputeZoomLevels: vp={vp.X:0}x{vp.Y:0} insets=({_topInset:0},{_bottomInset:0}) " +
             $"fit={_zoomFit:0.000} zoomMin={_zoomMin:0.000} " +
             $"levels=[{string.Join(",", System.Array.ConvertAll(_zoomLevels, v => v.ToString("0.000")))}]");
+        UpdateFogBackdrop();
     }
 
     private void OnViewportResized()
