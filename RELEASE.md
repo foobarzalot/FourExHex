@@ -239,7 +239,7 @@ Two workflows in `.github/workflows/`:
   - **Manual**: Actions → Build → Run workflow; pick a branch, a platform set,
     and optionally the store uploads: `upload_testflight` (iOS) and
     `upload_play` (Android — switches that job from a release APK to an AAB,
-    which is uploaded to the Play internal-testing track via
+    which is uploaded to the Play testing tracks via
     `tools/upload_play.sh` and also kept as a workflow artifact).
   - **PR label**: adding the `build-artifacts` label to a PR builds all
     platforms and attaches downloadable artifacts to the PR's checks. PR iOS
@@ -406,24 +406,40 @@ testers, query state) is fully API-driven via `tools/asc_api.sh`.
   EXPIRED). Useful for poll loops between upload and tester
   visibility.
 
-### Android — Google Play internal testing
+### Android — Google Play testing tracks
 
 The Android counterpart of TestFlight. One-time setup (Play Console account,
-app record, first manual upload, service account) is the runbook in
-**`docs/android-play-console-setup.md`**; after that, every release is:
+app record, first manual upload, service account, tester Google Group) is the
+runbook in **`docs/android-play-console-setup.md`**; after that, every release
+is:
 
 ```
 tools/build_android.sh aab      # release-signed App Bundle (Play takes .aab, not .apk)
-tools/upload_play.sh            # upload + roll out to the internal track
+tools/upload_play.sh            # upload + roll out to internal AND alpha
 ```
 
-`upload_play.sh` drives the Play Developer API's edits flow (open edit →
-upload bundle → point the `internal` track at the new versionCode → commit) and
-deletes the edit on failure so retries start clean. Internal-track rollouts are
-live immediately — no review, no processing delay. Testers install via the
-opt-in link (Play Console → Testing → Internal testing → Testers); the link is
-stable across builds and only works for accounts on the tester list:
-https://play.google.com/apps/internaltest/4701398035076861773
+`upload_play.sh` drives the Play Developer API's edits flow (open edit → upload
+bundle → point every track in `PLAY_TRACKS` at the new versionCode → commit) and
+deletes the edit on failure so retries start clean. One commit publishes all the
+tracks, so both carry the same versionCode. `PLAY_TRACKS` defaults to
+`internal,alpha`; set it to publish to a subset (`PLAY_TRACKS=internal
+tools/upload_play.sh`).
+
+The two tracks differ in who installs and how fast:
+
+| Track | Testers | Timing |
+|---|---|---|
+| `internal` | Accounts on the Play email list | Live immediately — no review |
+| `alpha` (closed) | Anyone in the tester Google Group | Google review first, then live |
+
+Internal is the fast loop for your own devices. Alpha is what outside testers
+install; its tester list is a Google Group, so membership is self-serve and
+needs no Console visit per tester.
+
+Opt-in links (stable across builds):
+- internal: https://play.google.com/apps/internaltest/4701398035076861773
+- closed (alpha): set in Play Console → Testing → Closed testing → Testers
+
 Bump `AppVersion.Build` before each upload — Play rejects a versionCode it has
 already seen.
 
@@ -435,9 +451,11 @@ already seen.
   `tools/play_api.sh --token` prints a bare token for callers hitting
   other endpoints (the bundle-upload URL lives under `/upload/…`).
   Never prints credentials.
-- `tools/check_play_status.sh` — one-shot read of the internal track's
-  releases (`versionCodes` + `status`), via a throwaway edit. Exit ≠ 0
+- `tools/check_play_status.sh` — one-shot read of each `PLAY_TRACKS` track's
+  releases (`versionCodes` + `status`), via one throwaway edit. Exit ≠ 0
   on auth/API errors, so it works in poll loops like the TestFlight one.
+  Same env override as the uploader (`PLAY_TRACKS=alpha
+  tools/check_play_status.sh`).
 
 ## 3. Reading logs on the device
 

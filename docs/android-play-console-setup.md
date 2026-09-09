@@ -188,10 +188,30 @@ The user switches back to their terminal Claude Code session and says something 
 Claude Code then runs the smoke test:
 
 ```sh
-tools/check_play_status.sh    # should print the internal track's release (versionCode from Step 4)
+tools/check_play_status.sh    # should print each track's release (versionCode from Step 4)
 ```
 
 From then on, every release is: bump `Build` in `scripts/AppVersion.cs` → `tools/build_android.sh aab` → `tools/upload_play.sh`.
+
+---
+
+## Closed track + tester Google Group (external testers)
+
+Internal testing takes an email list, so every tester means a Console visit. The closed track (`alpha`) accepts a **Google Group** instead, which makes tester onboarding self-serve: people join the group, and Play resolves membership.
+
+1. **Create the group** at groups.google.com — e.g. `fourexhex-testers@googlegroups.com`.
+2. **Group settings → Who can join**: "Anyone on the web can join" (self-serve) or "Anyone can ask" (you approve). It must not be private, or Play cannot resolve membership.
+3. **Play Console → Testing → Closed testing → your track → Testers tab → Google Groups**, and add the group address.
+4. **Set countries/regions** on the same track.
+5. **Record both links** — the group join URL and the closed-test opt-in URL. Those are what testers get; they go in `RELEASE.md`.
+
+Then `tools/upload_play.sh` publishes to `internal` and `alpha` together (`PLAY_TRACKS`, default `internal,alpha`).
+
+Things that differ from internal testing:
+
+- **Closed releases are reviewed.** A first submission can take hours to a couple of days; testers see nothing until it clears. Internal stays instant.
+- **The store listing must be complete** before Play lets a closed test start — icon, feature graphic, screenshots (phone + tablet), descriptions, and the App content declarations. Internal testing tolerates far less.
+- **Testers must join the group with the Google account their Play Store uses**, and membership takes a little while to propagate to Play.
 
 ---
 
@@ -201,5 +221,5 @@ From then on, every release is: bump `Build` in `scripts/AppVersion.cs` → `too
 - **Package name is set by the first upload, forever.** Double-check the AAB really is `com.foobarzalot.fourexhex` (it is, from `export_presets.cfg`) before Step 4 — a wrong package name means deleting the app record and starting over.
 - **"Free" is irreversible.** Once published, a free app can never become paid (a paid version would need a new package name). FourExHex is planned free; just make sure the user knows.
 - **Don't opt out of Play App Signing.** The default (Google holds the signing key, our keystore is the upload key) is what the scripts assume, and it makes a lost/leaked upload key recoverable (Console → App signing → request upload-key reset).
-- **The 12-tester/14-day rule is production-only.** If the user reads scary banners about closed-testing requirements, reassure them: internal testing is exempt and is all this pipeline needs.
+- **The 12-tester/14-day rule is production-only.** It gates publishing to production, not testing. Internal testing is exempt entirely; the closed track is where the clock runs if the account is a personal one subject to the rule. The Console's "Apply for production access" page is authoritative on whether it applies and how far along it is.
 - **Service-account 401/403 right after setup** is almost always permission propagation, not a broken key. Wait, retry, then check that the Android Developer API is enabled on the right GCP project and the invite in Play Console targeted the exact service-account email.

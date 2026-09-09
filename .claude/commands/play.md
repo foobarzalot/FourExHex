@@ -1,13 +1,14 @@
 ---
-description: Cut a new Google Play internal-testing release — bump build number, commit+push, build AAB & upload
+description: Cut a new Google Play testing release — bump build number, commit+push, build AAB & upload to the internal and closed tracks
 ---
 
-# /play — cut a Google Play internal-testing release
+# /play — cut a Google Play testing release
 
-Ship the current `main` to the Play internal-testing track (the Android
-counterpart of `/testflight`). Follow **`RELEASE.md` §1 (Versioning)** and
-**§2 (Android — Google Play internal testing)** — read them if anything below is
-ambiguous. Work the steps in order and report the outcome of each.
+Ship the current `main` to the Play testing tracks — `internal` (instant, your
+own devices) and `alpha` (the closed track wired to the tester Google Group).
+The Android counterpart of `/testflight`. Follow **`RELEASE.md` §1 (Versioning)**
+and **§2 (Android — Google Play testing tracks)** — read them if anything below
+is ambiguous. Work the steps in order and report the outcome of each.
 
 ## 0. Preconditions
 - Confirm the working tree is clean (`git status`). If there are uncommitted
@@ -45,28 +46,30 @@ exit. **Never `git add export_presets.cfg` while a build is running.** So commit
 and push the version bump *now*, before step 4:
 
 - `git add scripts/AppVersion.cs export_presets.cfg`
-- Commit with message: `Bump build number to <N> for Play internal testing`
+- Commit with message: `Bump build number to <N> for Play testing`
   (end the message with the standard `Co-Authored-By:` trailer).
 - `git push`
 
 If no bump was needed in step 1 (build already ahead of Play and already
 committed), skip the commit/push and note that in the report.
 
-## 4. Build the AAB and upload to the internal track
+## 4. Build the AAB and upload to the testing tracks
 - Run `tools/build_android.sh aab`. Long-running (gradle); warn the user before
   starting, then stream/summarize progress — don't go silent. Watch for the
   fail-fast prerequisite errors in the script header (SDK / NDK / JDK / signing
   creds) and surface them if they occur. Output:
   `build/android/FourExHex-release.aab`.
-- Run `tools/upload_play.sh`. It opens an edit, uploads the bundle, points the
-  `internal` track at the new versionCode, and commits. A 401/403 right after
+- Run `tools/upload_play.sh`. It opens an edit, uploads the bundle, points every
+  track in `PLAY_TRACKS` (default `internal,alpha`) at the new versionCode, and
+  commits — one edit, so both tracks land together. A 401/403 right after
   first-time setup is usually permission propagation — wait and retry before
   debugging (see the runbook's gotchas).
 
 ## 5. Report
-- On success, tell the user the new build number is live on the internal track
-  (no processing delay, unlike TestFlight) and testers get it via the existing
-  opt-in link.
-- Optionally confirm with `tools/check_play_status.sh`.
+- On success, tell the user the new build number is on both tracks, and be
+  precise about what that means: live immediately on `internal` (no processing
+  delay, unlike TestFlight), and queued for Google review on `alpha` — Google
+  Group testers only see it once that review clears.
+- Optionally confirm with `tools/check_play_status.sh`, which reports both.
 - If the build or upload failed, report the failing step and the relevant log
   output — do not claim success.
