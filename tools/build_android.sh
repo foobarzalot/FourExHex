@@ -152,7 +152,7 @@ rm -f "$OUT"
 
 echo "==> Built: $(file -b "$OUT")"
 if [[ "$MODE" == "aab" ]]; then
-  echo "==> Done. Upload to the Play internal-testing track with:"
+  echo "==> Done. Upload to the Play testing tracks (internal + alpha) with:"
   echo "    tools/upload_play.sh \"$OUT\""
 else
   echo "==> Done. Install on a connected device with:"
