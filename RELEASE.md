@@ -436,9 +436,26 @@ Internal is the fast loop for your own devices. Alpha is what outside testers
 install; its tester list is a Google Group, so membership is self-serve and
 needs no Console visit per tester.
 
-Opt-in links (stable across builds):
-- internal: https://play.google.com/apps/internaltest/4701398035076861773
-- closed (alpha): set in Play Console → Testing → Closed testing → Testers
+Tester links (stable across builds):
+- internal: https://play.google.com/apps/internaltest/4701398035076861773 —
+  works only for accounts on the Play email list.
+- closed (alpha): https://play.google.com/store/apps/details?id=com.foobarzalot.fourexhex —
+  the ordinary store listing. Group membership *is* the opt-in, so there is no
+  separate accept step: the listing resolves and offers the build for accounts
+  in the tester Google Group, and reads as not-found for everyone else.
+
+Onboarding an external tester is therefore two links, in order:
+
+```
+1. Join the group:  https://groups.google.com/g/fourexhex-testers
+2. Install:         https://play.google.com/store/apps/details?id=com.foobarzalot.fourexhex
+```
+
+The group (`fourexhex-testers@googlegroups.com`) is the track's tester list, so
+nobody has to touch the Play Console to add a tester. Testers must join with the
+same Google account their Play Store uses, and membership takes a little while to
+propagate to Play — a not-found store page right after joining usually means it
+hasn't propagated yet, not that something is wrong.
 
 Bump `AppVersion.Build` before each upload — Play rejects a versionCode it has
 already seen.
