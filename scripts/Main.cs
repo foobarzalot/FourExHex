@@ -1172,6 +1172,15 @@ public partial class Main : Node2D
         // back-input source); everything below assumes the visible scene.
         if (_visibleHud == null) return;
 
+        // 0. Game-over pause (the board is showing, the modal is held):
+        //    back = "tap anywhere to continue".
+        if (_controller.EndgamePauseActive)
+        {
+            Log.Debug(Log.LogCategory.Input, "[back] game-over pause → continue");
+            _controller.ContinueEndgamePause();
+            return;
+        }
+
         // 1. Game decided → back = the endgame overlay's Main Menu button.
         if (_session.IsGameOver)
         {

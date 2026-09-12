@@ -339,6 +339,11 @@ public class ReplayRecorder
     {
         if (_initialSnapshot == null) return;
         _aiPacer.Cancel();
+        // Playback holds every endgame overlay so the recorded mid-game
+        // defeat dialogs never re-paint; the replayed winner's own
+        // game-over pause takes over at the end.
+        _ops.ExitEndgamePause();
+        _ops.HoldEndgameOverlaysForReplay();
         _replayMode = true;
         _replayIndex = 0;
         _ops.GameEndedFired = false;
@@ -564,6 +569,13 @@ public class ReplayRecorder
         if (beat is ReplayMoveBeat or ReplayRejectedMoveBeat) _map.ShowMoveSource(null);
 
         _ops.CheckGameEndConditions();
+        // A replayed game-ending move stretches the pause's settle to its
+        // travel tween, exactly like the live tracks.
+        if (_ops.EndgamePauseActive && beat is ReplayMoveBeat endMove)
+        {
+            _ops.ExtendEndgamePause(
+                StepPacing.MoveSettleDelayMs(HexCoord.Distance(endMove.From, endMove.To)));
+        }
         _ops.RefreshViews();
 
         if (_session.IsGameOver) { EndReplay(); return; }
@@ -720,6 +732,11 @@ public class ReplayRecorder
         _replayInstantActive = false;
         _ops.SuppressMapRebuild = false;
         _aiPacer.Cancel();
+        // The cancel just dropped the pause's armed hint chain (a replayed
+        // winner's pause); let the closing refresh arm it again. Without a
+        // winner, release the playback-wide overlay hold instead.
+        if (_session.IsGameOver) _ops.RearmEndgamePauseHint();
+        else _ops.ReleaseEndgameOverlaysAfterReplay();
         // Lift silent mode so the final game-over board (winner overlay,
         // last-move state) renders with normal audio/VFX. No-op for
         // non-instant replay, which never silenced the view.

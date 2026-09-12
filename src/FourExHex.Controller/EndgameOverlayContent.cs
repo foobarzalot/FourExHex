@@ -16,6 +16,47 @@ public static class EndgameOverlayContent
 {
     public sealed record Content(string Eyebrow, string Title, bool OfferReplay);
 
+    /// <summary>The game-over pause's top banner: the eyebrow word and the
+    /// player whose color frames it.</summary>
+    public sealed record Banner(string Text, PlayerId Color);
+
+    /// <summary>
+    /// Banner for the game-over pause, or null when nothing has ended. A
+    /// declared winner reuses <see cref="For"/>'s framing (VICTORY in the
+    /// winner's color; DEFEAT in the eliminated human's color when the AI
+    /// or the Vikings ended a human's game); a mid-game human elimination
+    /// with no winner yet is a DEFEAT in that human's color. An AI winning
+    /// an endgame the humans were only spectating shows no banner.
+    /// </summary>
+    public static Banner? PauseBanner(
+        PlayerId? winner, PlayerId? pendingDefeatScreen,
+        System.Collections.Generic.IReadOnlyList<Player> players)
+    {
+        if (winner.HasValue)
+        {
+            Player? winnerPlayer = null;
+            foreach (Player p in players)
+            {
+                if (p.Id == winner.Value) { winnerPlayer = p; break; }
+            }
+            bool winnerIsHuman = winnerPlayer != null && !winnerPlayer.IsAi;
+            Player? defeatedHuman = winnerIsHuman
+                ? null
+                : DefeatedHumanFor(pendingDefeatScreen, players);
+            // An AI outlasting an AI-vs-AI endgame (the humans fell earlier
+            // and dismissed their own defeat screens) is nobody's victory
+            // to trumpet at the spectator: no banner, the modal announces it.
+            if (!winnerIsHuman && !winner.Value.IsNone && defeatedHuman == null) return null;
+            Content content = For(
+                winner.Value, winnerPlayer?.Name ?? "", winnerIsHuman, defeatedHuman?.Name);
+            return new Banner(content.Eyebrow, defeatedHuman?.Id ?? winner.Value);
+        }
+        Player? loser = DefeatedHumanFor(pendingDefeatScreen, players);
+        return loser == null
+            ? null
+            : new Banner(Strings.Get(StringKeys.EndgameDefeatEyebrow), loser.Id);
+    }
+
     /// <summary>
     /// The human whose name (and color) frames the AI-winner DEFEAT
     /// overlay: the human whose elimination ended the game, read from
@@ -49,14 +90,19 @@ public static class EndgameOverlayContent
                 Title: Strings.Get(StringKeys.EndgameVikingConquestTitle),
                 OfferReplay: false);
         }
-        return !winnerIsHuman && defeatedHumanName != null
-            ? new Content(
+        if (!winnerIsHuman && defeatedHumanName != null)
+        {
+            return new Content(
                 Eyebrow: Strings.Get(StringKeys.EndgameDefeatEyebrow),
                 Title: Strings.Get(StringKeys.EndgameDefeatedTitle, ("name", defeatedHumanName)),
-                OfferReplay: false)
-            : new Content(
-                Eyebrow: Strings.Get(StringKeys.EndgameVictoryEyebrow),
-                Title: Strings.Get(StringKeys.EndgameVictoryTitle, ("name", winnerName)),
-                OfferReplay: true);
+                OfferReplay: false);
+        }
+        // An AI outlasting an AI-vs-AI endgame (the humans fell earlier and
+        // dismissed their own defeat screens) is named, not celebrated: the
+        // VICTORY eyebrow is reserved for a human winner.
+        return new Content(
+            Eyebrow: winnerIsHuman ? Strings.Get(StringKeys.EndgameVictoryEyebrow) : "",
+            Title: Strings.Get(StringKeys.EndgameVictoryTitle, ("name", winnerName)),
+            OfferReplay: true);
     }
 }

@@ -33,6 +33,7 @@ public class MockHudView : IHudView
     public event Action? ClaimVictoryContinueClicked;
     public event Action? ReplayClicked;
     public event Action? TutorialMessageTapped;
+    public event Action? EndgameContinueRequested;
 
     public int RefreshCount { get; private set; }
     public GameState? LastState { get; private set; }
@@ -139,6 +140,19 @@ public class MockHudView : IHudView
 
     public bool EndgameOverlaysHeld { get; private set; }
     public void SetEndgameOverlaysHeld(bool held) => EndgameOverlaysHeld = held;
+
+    /// <summary>Last value pushed via <see cref="SetHudChromeHidden"/> —
+    /// true while the game-over pause hides every HUD control.</summary>
+    public bool ChromeHidden { get; private set; }
+    public void SetHudChromeHidden(bool hidden) => ChromeHidden = hidden;
+
+    /// <summary>Last value pushed via <see cref="SetEndgameContinueHint"/>.</summary>
+    public bool EndgameContinueHintShown { get; private set; }
+    public void SetEndgameContinueHint(bool shown) => EndgameContinueHintShown = shown;
+
+    /// <summary>Raise <see cref="EndgameContinueRequested"/>, as if the
+    /// player pressed Enter / Space / Escape during the game-over pause.</summary>
+    public void RaiseEndgameContinue() => EndgameContinueRequested?.Invoke();
 
     public HexCoord? SummonedCapitalAlertCoord { get; private set; }
     public EconomyOutlook? LastSummonedAlertOutlook { get; private set; }

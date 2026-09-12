@@ -132,6 +132,7 @@ public class GameController
         _map = map;
         _hud = hud;
         _masterSeed = seed ?? SeedFormat.NextSeed(Random.Shared);
+        _aiPacer = aiPacer ?? new SynchronousAiPacer();
         _ops = new GameOperations(
             state,
             session,
@@ -155,8 +156,8 @@ public class GameController
             onAfterRefresh: onAfterRefresh,
             isAutomating: () => _automating,
             isAutomateExhausted: () => _automateExhausted,
-            automateSilentMode: _automateIsInstantMode);
-        _aiPacer = aiPacer ?? new SynchronousAiPacer();
+            automateSilentMode: _automateIsInstantMode,
+            aiPacer: _aiPacer);
         _recorder = new ReplayRecorder(
             state: state,
             session: session,
@@ -201,11 +202,14 @@ public class GameController
         _hud.DefeatContinueClicked += OnDefeatContinuePressed;
         _hud.ClaimVictoryWinNowClicked += OnClaimVictoryWinNowPressed;
         _hud.ClaimVictoryContinueClicked += OnClaimVictoryContinuePressed;
+        _hud.EndgameContinueRequested += OnEndgameContinueRequested;
 
         // Tutorial Preview / Record use the bottom-center tutorial
         // message panel for game-over signaling; the click-blocking
-        // victory modal would otherwise freeze further author input.
+        // victory modal would otherwise freeze further author input —
+        // and the game-over pause stays off with it.
         _hud.SetVictoryOverlaySuppressed(_previewMode || _recordingMode);
+        _ops.EndgamePauseEnabled = !(_previewMode || _recordingMode);
 
         // Difficulty lever instrumentation: one-shot at game
         // construction, only when some slot is non-Soldier (non-default), so a
@@ -242,6 +246,7 @@ public class GameController
         _pendingAutomateAction = null;
         _automateTrackInstant = false;
         _aiPacer.Cancel();
+        _ops.ExitEndgamePause();
         // Unsubscribe from view events so a downstream click can't
         // re-enter this stale controller's handlers — relevant when
         // the view is shared between sessions (TutorialBuilder's
@@ -268,6 +273,7 @@ public class GameController
         _hud.DefeatContinueClicked -= OnDefeatContinuePressed;
         _hud.ClaimVictoryWinNowClicked -= OnClaimVictoryWinNowPressed;
         _hud.ClaimVictoryContinueClicked -= OnClaimVictoryContinuePressed;
+        _hud.EndgameContinueRequested -= OnEndgameContinueRequested;
         // Clear any tap-summoned notice so a shared HudView doesn't
         // carry stale view state into the next session.
         _hud.DismissCapitalAlertNotice();
@@ -317,6 +323,9 @@ public class GameController
     /// </summary>
     public void Resume(bool freshStart = false)
     {
+        // A shared HudView (TutorialBuilder's Record ↔ Preview) may still
+        // carry a prior session's pause latches.
+        _ops.ExitEndgamePause();
         // Resume reached without an initial snapshot means we loaded a
         // pre-replay save (v3). Capture at load time so future replays
         // of *this* game from save-then-load have something to anchor
@@ -587,6 +596,10 @@ public class GameController
     /// Input handlers early-return when this is set; autosave is
     /// suppressed.</summary>
     public bool IsReplayMode => _recorder.IsReplaying;
+
+    /// <summary>True while the game-over pause holds the endgame modal
+    /// back so the player can take in the finished board.</summary>
+    public bool EndgamePauseActive => _ops.EndgamePauseActive;
     // --- Achievements ---
 
     private readonly AchievementTracker _achievements;
@@ -823,6 +836,7 @@ public class GameController
 
     private void OnTileClicked(HexTile? tile)
     {
+        if (_ops.EndgamePauseActive) { _ops.ContinueEndgamePause("tap"); return; }
         // Capture BEFORE TrackHandler runs, since TrackHandler's default-
         // dismiss will clear _hud.SummonedCapitalAlertCoord. The body uses
         // priorAlert to implement toggle-off-on-re-tap of the same capital.
@@ -830,8 +844,11 @@ public class GameController
         TrackHandler(() => OnTileClickedBody(tile, priorAlert));
     }
 
-    private void OnOffGridClicked(HexCoord coord) =>
+    private void OnOffGridClicked(HexCoord coord)
+    {
+        if (_ops.EndgamePauseActive) { _ops.ContinueEndgamePause("tap"); return; }
         TrackHandler(() => OnOffGridClickedBody(coord));
+    }
 
     /// <summary>
     /// Handle a click whose coord is outside the land grid (water, etc.).
@@ -1008,8 +1025,19 @@ public class GameController
         }
     }
 
-    private void OnTileLongClicked(HexTile? tile) =>
+    private void OnTileLongClicked(HexTile? tile)
+    {
+        if (_ops.EndgamePauseActive) { _ops.ContinueEndgamePause("tap"); return; }
         TrackHandler(() => OnTileLongClickedBody(tile));
+    }
+
+    /// <summary>HUD-side continue (Enter / Space / Escape) for the
+    /// game-over pause. Map taps continue through the click handlers.</summary>
+    private void OnEndgameContinueRequested() => _ops.ContinueEndgamePause("key");
+
+    /// <summary>Continue past the game-over pause from the scene root
+    /// (the Android back gesture). No-op when not paused.</summary>
+    public void ContinueEndgamePause() => _ops.ContinueEndgamePause("back");
 
     /// <summary>
     /// Long-press rally: move every still-unmoved unit in the territory
@@ -1205,6 +1233,7 @@ public class GameController
     {
         _previewScriptingComplete = true;
         _hud.SetVictoryOverlaySuppressed(false);
+        _ops.EndgamePauseEnabled = true;
         // Clear any pinned scripted cue instruction (e.g. "Press End
         // Turn.") so it doesn't linger into free play or the auto-replay;
         // hands the message panel back to the normal HUD action-hint pass.
@@ -1585,10 +1614,10 @@ public class GameController
             $"Move {source}→{destination}", originCapital, destination,
             r.Move, wasCombine, onCaptured: RebindSelectionToContaining);
 
-        // A winning move holds the victory overlay until the travel tween
-        // settles — latched before FinishPendingAction / TrackHandler's
-        // trailing refresh can paint it.
-        MaybeHoldOverlayForWinningMove(source, destination);
+        // A game-ending / defeating move stretches the pause's settle to
+        // its travel tween — re-armed before FinishPendingAction /
+        // TrackHandler's trailing refresh can arm the baseline chain.
+        MaybeExtendEndgamePauseForMove(source, destination);
 
         FinishPendingAction();
 
@@ -1965,12 +1994,12 @@ public class GameController
             {
                 _handlerMutatedGame = true;
                 result = _aiDriver.ApplyAiActionCore(action);
-                // Latched INSIDE the tracked body: TrackHandler's trailing
-                // refresh would otherwise paint a winning move's victory
-                // overlay before the travel tween settles.
+                // Re-armed INSIDE the tracked body: TrackHandler's trailing
+                // refresh would otherwise arm the baseline hint chain
+                // before the travel tween settles.
                 if (action is AiMoveAction amv)
                 {
-                    MaybeHoldOverlayForWinningMove(amv.Source, amv.Destination);
+                    MaybeExtendEndgamePauseForMove(amv.Source, amv.Destination);
                 }
             });
         }
@@ -1989,19 +2018,16 @@ public class GameController
     }
 
     /// <summary>
-    /// Human-track twin of the AI driver's overlay hold: if the move
-    /// that just executed ended the game, hold the victory overlay and
-    /// schedule its reveal one settle delay later so it doesn't pop over
-    /// the still-traveling glyph. No-op when the game didn't end or the
-    /// human speed is Instant (the view snaps — no travel to wait for).
-    /// A human's own move can never raise the defeat screen, so only the
-    /// game-end case is covered here.
+    /// Human-track twin of the AI driver's settle stretch: if the move
+    /// that just executed entered the game-over pause (won the game, or
+    /// eliminated another human), re-arm the pause's hint chain with the
+    /// move's distance-scaled settle delay so the hint doesn't appear
+    /// over the still-traveling glyph. No-op when nothing paused.
     /// </summary>
-    private void MaybeHoldOverlayForWinningMove(HexCoord source, HexCoord destination)
+    private void MaybeExtendEndgamePauseForMove(HexCoord source, HexCoord destination)
     {
-        if (!_ops.GameEndedFired || _automateIsInstantMode()) return;
-        _ops.HoldEndgameOverlays();
-        _aiPacer.Schedule(_ops.RevealEndgameOverlays,
+        if (!_ops.EndgamePauseActive) return;
+        _ops.ExtendEndgamePause(
             StepPacing.MoveSettleDelayMs(HexCoord.Distance(source, destination)));
     }
 
@@ -2197,6 +2223,9 @@ public class GameController
     {
         if (_recorder.IsReplaying) return;
         if (_ops.InSilentAiBatch()) return;
+        // Reached mid-pause only by a scripted flow (the button is hidden
+        // behind the pause): collapse the pause into the dismissal.
+        if (_ops.EndgamePauseActive) _ops.ContinueEndgamePause("dismiss");
         if (_automating) StopAutomation("input");
         if (!_session.PendingDefeatScreen.HasValue) return;
         if (_humanActionValidator != null && !_humanActionValidator(new ReplayDismissDefeatBeat()))

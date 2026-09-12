@@ -179,12 +179,6 @@ public class AiTurnDriver
             ? StepPacing.MoveSettleDelayMs(HexCoord.Distance(mv.Source, mv.Destination))
             : StepPacing.AiActionDelayMs;
 
-    /// <summary>Schedule the endgame-overlay reveal to land after the
-    /// executed move's settle delay (multiplier-scaled, matching the
-    /// travel tween's own scaling).</summary>
-    private void ScheduleOverlayReveal(AiAction action) =>
-        _aiPacer.Schedule(_ops.RevealEndgameOverlays, SettleDelayFor(action));
-
     /// <summary>
     /// Preview beat: pick the next AI action, highlight the territory
     /// that will perform it, and schedule <see cref="StepAiExecute"/>
@@ -303,15 +297,14 @@ public class AiTurnDriver
         HexCoord resultCoord = ApplyAiActionCore(action);
 
         _ops.CheckGameEndConditions();
-        // A game-ending / human-defeating MOVE holds its modal until the
-        // travel tween settles — the overlay must not pop over a unit
-        // still in flight. Latched before any refresh below can paint;
-        // released by the scheduled reveal one settle delay later.
-        // Non-move actions (no travel) keep the inline paint.
-        bool holdOverlay = action is AiMoveAction
-            && !_aiSilentMode()
-            && (_ops.GameEndedFired || _session.PendingDefeatScreen.HasValue);
-        if (holdOverlay) _ops.HoldEndgameOverlays();
+        // A game-ending / human-defeating MOVE stretches the pause's
+        // settle to its travel tween — the continue hint must not appear
+        // over a unit still in flight. Re-armed before any refresh below
+        // can arm the baseline chain.
+        if (action is AiMoveAction && _ops.EndgamePauseActive)
+        {
+            _ops.ExtendEndgamePause(SettleDelayFor(action));
+        }
         if (_ops.GameEndedFired)
         {
             // Domination fired inside the action we just executed
@@ -326,7 +319,6 @@ public class AiTurnDriver
             // painting the victory screen — otherwise it draws on top.
             _ops.RefreshSilentMode();
             _ops.ShowHighlightAndRefresh(null);
-            if (holdOverlay) ScheduleOverlayReveal(action);
             return;
         }
 
@@ -359,7 +351,6 @@ public class AiTurnDriver
         {
             _ops.RefreshSilentMode();
             _ops.RefreshViews();
-            if (holdOverlay) ScheduleOverlayReveal(action);
             return;
         }
         // A wave just spawned: hold the neutral turn open while the arrival
@@ -663,6 +654,12 @@ public class AiTurnDriver
     /// </summary>
     private void EndInstantAiBatch()
     {
+        // Per-capture rebuilds were suppressed during the batch; do one
+        // final structural rebuild so borders and tile colors match the
+        // post-AI board — the game-over pause shows this board, so it
+        // must be current even when the batch merely paused on an
+        // overlay.
+        _map.RebuildAfterTerritoryChange();
         if (_session.PendingDefeatScreen.HasValue
             || _session.PendingClaimVictory.HasValue)
         {
@@ -670,9 +667,6 @@ public class AiTurnDriver
             _ops.RefreshViews();
             return;
         }
-        // Per-capture rebuilds were suppressed during the batch; do one
-        // final structural rebuild so borders match the post-AI board.
-        _map.RebuildAfterTerritoryChange();
         // Hands control back to a human (or the game ended): lift silent
         // + hide the "Opponents…" overlay, then the single end-of-batch
         // paint the human sees (winner overlay if the game just ended).

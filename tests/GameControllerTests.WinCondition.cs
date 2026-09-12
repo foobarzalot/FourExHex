@@ -180,6 +180,10 @@ public partial class GameControllerTests
         map.SimulateClick(grid.Get(HexCoord.FromOffset(2, 0)));
         map.SimulateClick(grid.Get(HexCoord.FromOffset(3, 0))); // capture
         Assert.False(session.IsGameOver);
+        // The capture eliminated Blue (a human): the game-over pause holds
+        // the board and End Turn is inert until the defeat is dismissed.
+        Assert.Equal(blue.Id, session.PendingDefeatScreen);
+        hud.ClickDefeatContinue();
 
         hud.ClickEndTurn();
 

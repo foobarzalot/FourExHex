@@ -99,6 +99,27 @@ public partial class HudView : OrientationHud, IHudView
     // victory/defeat modal doesn't pop while the winning move's travel
     // tween is mid-flight. Latched + released by the controller.
     private bool _endgameOverlaysHeld;
+    // Game-over pause: every piece of HUD chrome is hidden while the
+    // player takes in the finished board (SetHudChromeHidden), and the
+    // continue hint is driven by the controller (SetEndgameContinueHint)
+    // rather than the tutorial's own timer. Both re-assert on Refresh and
+    // on every layout pass, because those repaint visibility freely.
+    private bool _chromeHidden;
+    private bool _endgameHintShown;
+    private bool _automateVisible = true;
+    // Top-of-screen VICTORY / DEFEAT banner shown over the paused board
+    // (content from EndgameOverlayContent.PauseBanner; built lazily).
+    private Control? _endgameBanner;
+    private Label? _endgameBannerLabel;
+    private string? _endgameBannerShown;
+    private Tween? _endgameBannerTween;
+    // Set once the banner has faded out for this pause (when the continue
+    // hint appears) so later refreshes don't bring it back.
+    private bool _endgameBannerFaded;
+    private const double EndgameBannerFadeSec = 0.6;
+    private const float EndgameBannerW = 520f;
+    private const float EndgameBannerH = 90f;
+    private const float EndgameBannerMarginTop = 18f;
     // Last-seen AI-turn lockdown state, only to log the transition once.
     private bool _aiTurnLockdownActive;
     private HudIconButton _nextUnitButton = null!;
@@ -121,6 +142,7 @@ public partial class HudView : OrientationHud, IHudView
     private ColorRect _mapDim = null!;
     private Control _victoryOverlay = null!;
     private Label _victoryLabel = null!;
+    private Label _victoryEyebrow = null!;   // hidden for an AI-vs-AI ending (empty eyebrow)
     // Viking Raiders total wipeout: a game-over DEFEAT presentation (the
     // raiders beat every player), distinct from the per-player defeat
     // overlay (which offers Continue) and from the victory overlay (which
@@ -1061,6 +1083,9 @@ public partial class HudView : OrientationHud, IHudView
             CallDeferred(nameof(LogSeedLabelFit));
         }
         PositionTutorialOverlay();
+        PositionEndgameHint();
+        PositionEndgameBanner();
+        if (_chromeHidden) ApplyChromeVisibility();
     }
 
     /// <summary>
@@ -1277,6 +1302,7 @@ public partial class HudView : OrientationHud, IHudView
     }
 
     public event Action? TutorialMessageTapped;
+    public event Action? EndgameContinueRequested;
 
     /// <summary>
     /// Full-viewport overlay used while a tappable tutorial (display-text)
@@ -1357,11 +1383,224 @@ public partial class HudView : OrientationHud, IHudView
             SceneTreeTimer timer = GetTree().CreateTimer(ContinueHintDelaySeconds);
             timer.Timeout += () => RevealContinueHint(gen);
         }
+        else if (!_endgameHintShown)
+        {
+            // The game-over pause owns the hint while it's up (a tutorial
+            // message hide — e.g. the "Opponents…" banner clearing on
+            // game-over — must not take it down).
+            StopContinueHintPulse();
+            _continueHint.Visible = false;
+        }
+    }
+
+    /// <summary>
+    /// Game-over pause hint: the same flashing "{Verb} anywhere to
+    /// continue" label the tutorial uses, but shown on the controller's
+    /// schedule (no view-side delay) and positioned at the bottom edge
+    /// with no narration panel beneath it. Click-through, so the tap it
+    /// invites lands on the map and reaches the controller as a click.
+    /// </summary>
+    public void SetEndgameContinueHint(bool shown)
+    {
+        if (_endgameHintShown == shown) return;
+        _endgameHintShown = shown;
+        // The overlay (panel + hint label) is built once in _Ready; never
+        // rebuild here — a fresh label would orphan the one on screen.
+        _continueHintGen++; // orphan any pending tutorial reveal
+        if (shown)
+        {
+            FadeOutEndgameBanner();
+            PositionEndgameHint();
+            _continueHint.Visible = true;
+            MoveChild(_continueHint, GetChildCount() - 1);
+            StartContinueHintPulse();
+        }
         else
         {
             StopContinueHintPulse();
             _continueHint.Visible = false;
         }
+        Log.Debug(Log.LogCategory.Hud, $"[endgame-pause] hint {(shown ? "visible" : "hidden")}");
+    }
+
+    /// <summary>Bottom-edge placement for the game-over hint: the same
+    /// lift the tutorial panel uses (portrait bottom bar height — the bar
+    /// is hidden, but the lift keeps the hint clear of the home indicator
+    /// and reads the same in both orientations), no panel above it.</summary>
+    private void PositionEndgameHint()
+    {
+        if (!_endgameHintShown) return;
+        float lift = Orientation == ScreenOrientation.Portrait
+            ? HudBars.PortraitBottomBarHeight
+            : SafeArea.Current.Bottom;
+        float bottom = TutorialMarginBottom + lift;
+        _continueHint.OffsetTop = -bottom - 40f;
+        _continueHint.OffsetBottom = -bottom - 4f;
+    }
+
+    /// <summary>
+    /// Game-over pause: hide (or restore) every piece of HUD chrome —
+    /// corner zones, rails / bottom bar, the corner-pinned strips, the
+    /// seed label, toasts and banners — leaving the map, the endgame
+    /// overlays and the continue hint. Re-asserted by Refresh and every
+    /// layout pass (the zones are rebuilt on an orientation flip).
+    /// </summary>
+    public void SetHudChromeHidden(bool hidden)
+    {
+        if (_chromeHidden == hidden) return;
+        _chromeHidden = hidden;
+        ApplyChromeVisibility();
+        Log.Debug(Log.LogCategory.Hud,
+            $"[endgame-pause] chrome {(hidden ? "hidden" : "restored")}");
+    }
+
+    /// <summary>
+    /// VICTORY / DEFEAT banner across the top of the paused board — the
+    /// same framing and color the modal will use, so the player reads the
+    /// outcome while taking in the board. Shown only while the chrome is
+    /// hidden (the pause); the modal carries the message afterwards.
+    /// </summary>
+    private void RefreshEndgameBanner(GameState state, SessionState session)
+    {
+        EndgameOverlayContent.Banner? banner = _chromeHidden
+            ? EndgameOverlayContent.PauseBanner(
+                session.Winner, session.PendingDefeatScreen, state.Turns.Players)
+            : null;
+        if (banner == null)
+        {
+            if (_endgameBanner != null && _endgameBanner.Visible)
+            {
+                _endgameBanner.Visible = false;
+                _endgameBannerShown = null;
+                Log.Debug(Log.LogCategory.Hud, "[endgame-pause] banner hidden");
+            }
+            return;
+        }
+        if (_endgameBannerFaded) return; // already handed off to the hint
+        BuildEndgameBanner();
+        string key = banner.Text;
+        if (_endgameBannerShown == key && _endgameBanner!.Visible) return;
+        _endgameBannerShown = key;
+        _endgameBannerLabel!.Text = banner.Text;
+        PositionEndgameBanner();
+        // Fade in from transparent; the continue hint's arrival fades it
+        // back out (FadeOutEndgameBanner).
+        _endgameBannerTween?.Kill();
+        _endgameBanner!.Modulate = new Color(1f, 1f, 1f, 0f);
+        _endgameBanner.Visible = true;
+        MoveChild(_endgameBanner, GetChildCount() - 1);
+        _endgameBannerTween = _endgameBanner.CreateTween();
+        _endgameBannerTween.TweenProperty(_endgameBanner, "modulate:a", 1f, EndgameBannerFadeSec)
+            .SetTrans(Tween.TransitionType.Sine);
+        Log.Debug(Log.LogCategory.Hud, $"[endgame-pause] banner \"{banner.Text}\" fading in");
+    }
+
+    /// <summary>Fade the banner out and keep it out for the rest of this
+    /// pause — called when the continue hint appears, which takes over the
+    /// top-of-mind message.</summary>
+    private void FadeOutEndgameBanner()
+    {
+        if (_endgameBanner == null || !_endgameBanner.Visible || _endgameBannerFaded) return;
+        _endgameBannerFaded = true;
+        _endgameBannerTween?.Kill();
+        _endgameBannerTween = _endgameBanner.CreateTween();
+        _endgameBannerTween.TweenProperty(_endgameBanner, "modulate:a", 0f, EndgameBannerFadeSec)
+            .SetTrans(Tween.TransitionType.Sine);
+        _endgameBannerTween.TweenCallback(Callable.From(() =>
+        {
+            _endgameBanner.Visible = false;
+            _endgameBannerShown = null;
+        }));
+        Log.Debug(Log.LogCategory.Hud, "[endgame-pause] banner fading out");
+    }
+
+    private void BuildEndgameBanner()
+    {
+        if (_endgameBanner != null) return;
+        // Bare text floating over the map: no panel, border or backdrop —
+        // a dark outline + soft shadow keep the word legible on any tile.
+        _endgameBanner = new Control
+        {
+            AnchorLeft = 0.5f,
+            AnchorRight = 0.5f,
+            AnchorTop = 0f,
+            AnchorBottom = 0f,
+            Visible = false,
+            MouseFilter = Control.MouseFilterEnum.Ignore,
+        };
+        AddChild(_endgameBanner);
+
+        _endgameBannerLabel = new Label
+        {
+            AnchorLeft = 0f, AnchorRight = 1f,
+            AnchorTop = 0f, AnchorBottom = 1f,
+            OffsetLeft = 16f, OffsetRight = -16f,
+            HorizontalAlignment = HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Center,
+            MouseFilter = Control.MouseFilterEnum.Ignore,
+        };
+        _endgameBannerLabel.AddThemeFontOverride("font", SerifFont);
+        _endgameBannerLabel.AddThemeFontSizeOverride("font_size", 64);
+        _endgameBannerLabel.AddThemeColorOverride("font_color", new Color(1f, 1f, 1f, 1f));
+        _endgameBannerLabel.AddThemeColorOverride("font_shadow_color", new Color(0f, 0f, 0f, 0.5f));
+        _endgameBannerLabel.AddThemeConstantOverride("shadow_offset_x", 0);
+        _endgameBannerLabel.AddThemeConstantOverride("shadow_offset_y", 3);
+        _endgameBannerLabel.AddThemeConstantOverride("shadow_outline_size", 4);
+        _endgameBanner.AddChild(_endgameBannerLabel);
+        PositionEndgameBanner();
+    }
+
+    /// <summary>Top-center, under the safe-area inset; width clamped to the
+    /// viewport like the other centered panels.</summary>
+    private void PositionEndgameBanner()
+    {
+        if (_endgameBanner == null) return;
+        float viewportW = GetViewport().GetVisibleRect().Size.X;
+        float width = HudPanelMath.ClampWidth(EndgameBannerW, viewportW, HudPanelSideMargin);
+        _endgameBanner.OffsetLeft = -width * 0.5f;
+        _endgameBanner.OffsetRight = width * 0.5f;
+        float top = SafeArea.Current.Top + EndgameBannerMarginTop;
+        _endgameBanner.OffsetTop = top;
+        _endgameBanner.OffsetBottom = top + EndgameBannerH;
+    }
+
+    private void ApplyChromeVisibility()
+    {
+        bool show = !_chromeHidden;
+        TopLeftZone.Visible = show;
+        TopRightZone.Visible = show;
+        if (BottomBar != null) BottomBar.Visible = show;
+        if (LeftRail != null) LeftRail.Visible = show;
+        if (RightRail != null) RightRail.Visible = show;
+        // Landscape corner strips are direct children of the layer (not
+        // inside a zone); in portrait these same nodes sit in the bottom
+        // bar, where the container hide already covers them.
+        _endTurnButton.Visible = show;
+        _undoCluster.Visible = show;
+        if (_automateButton != null) _automateButton.Visible = show && _automateVisible;
+        _seedLabel.Visible = show && !RecordingMode.Active;
+        if (_chromeHidden)
+        {
+            if (_tutorialOverlayBuilt) _tutorialPanel.Visible = false;
+            _bankruptToast.Visible = false;
+            DismissCapitalAlertNotice();
+            if (_transientBannerBuilt)
+            {
+                _transientBannerTween?.Kill();
+                _transientBanner.Visible = false;
+            }
+        }
+        else if (_externalMessageActive && !RecordingMode.Active)
+        {
+            _tutorialPanel.Visible = true;
+        }
+        if (show)
+        {
+            _endgameBannerTween?.Kill();
+            if (_endgameBanner != null) _endgameBanner.Visible = false;
+            _endgameBannerShown = null;
+        }
+        _endgameBannerFaded = false; // fresh for the next pause
     }
 
     private void RevealContinueHint(int gen)
@@ -1930,7 +2169,7 @@ public partial class HudView : OrientationHud, IHudView
     {
         // VICTORY eyebrow + DM Serif "<Player> wins!" (color set by Refresh)
         // + gold rule + three-button row (Play Again / Replay / Main Menu).
-        (Control overlay, Label title, Button[] buttons) = BuildEndgameOverlay(
+        (Control overlay, Label title, Button[] buttons, Label eyebrow) = BuildEndgameOverlay(
             eyebrowText: Strings.Get(StringKeys.EndgameVictoryEyebrow),
             titleText: "",  // always set from EndgameOverlayContent by Refresh
             titleFontSize: 52,
@@ -1944,6 +2183,7 @@ public partial class HudView : OrientationHud, IHudView
             });
         _victoryOverlay = overlay;
         _victoryLabel = title;
+        _victoryEyebrow = eyebrow;
         _replayButton = buttons[1];
         _replayButton.Disabled = true;  // gated by SetReplayAvailable
     }
@@ -1983,7 +2223,7 @@ public partial class HudView : OrientationHud, IHudView
     /// </summary>
     private void BuildCampaignVictoryOverlay()
     {
-        (Control overlay, Label title, Button[] buttons) = BuildEndgameOverlay(
+        (Control overlay, Label title, Button[] buttons, Label _) = BuildEndgameOverlay(
             eyebrowText: Strings.Get(StringKeys.HudOverlayCampaignEyebrow),
             titleText: "",  // always set to the level-won line by Refresh
             titleFontSize: 52,
@@ -2033,7 +2273,7 @@ public partial class HudView : OrientationHud, IHudView
         EndgameOverlayContent.Content content = EndgameOverlayContent.For(
             PlayerId.None, winnerName: "", winnerIsHuman: false,
             defeatedHumanName: null);
-        (Control overlay, Label _, Button[] _) = BuildEndgameOverlay(
+        (Control overlay, Label _, Button[] _, Label _) = BuildEndgameOverlay(
             eyebrowText: content.Eyebrow,
             titleText: content.Title,
             titleFontSize: 44,
@@ -2057,7 +2297,7 @@ public partial class HudView : OrientationHud, IHudView
     /// </summary>
     private void BuildAiWonOverlay()
     {
-        (Control overlay, Label title, Button[] _) = BuildEndgameOverlay(
+        (Control overlay, Label title, Button[] _, Label _) = BuildEndgameOverlay(
             eyebrowText: Strings.Get(StringKeys.EndgameDefeatEyebrow),
             titleText: "",  // always set from EndgameOverlayContent by Refresh
             titleFontSize: 44,
@@ -2083,7 +2323,7 @@ public partial class HudView : OrientationHud, IHudView
     /// </summary>
     private void BuildDefeatOverlay()
     {
-        (Control overlay, Label title, Button[] buttons) = BuildEndgameOverlay(
+        (Control overlay, Label title, Button[] buttons, Label _) = BuildEndgameOverlay(
             eyebrowText: Strings.Get(StringKeys.EndgameDefeatEyebrow),
             titleText: "",  // always set to "<Loser> defeated" by Refresh
             titleFontSize: 48,
@@ -2109,7 +2349,7 @@ public partial class HudView : OrientationHud, IHudView
     /// </summary>
     private void BuildClaimVictoryOverlay()
     {
-        (Control overlay, Label _, Button[] buttons) = BuildEndgameOverlay(
+        (Control overlay, Label _, Button[] buttons, Label _) = BuildEndgameOverlay(
             eyebrowText: Strings.Get(StringKeys.HudOverlayCheckpointEyebrow),
             titleText: Strings.Get(StringKeys.HudOverlayClaimVictoryTitle),
             titleFontSize: 44,
@@ -2140,7 +2380,7 @@ public partial class HudView : OrientationHud, IHudView
     /// Returns the overlay root, the title label (so Refresh can set the
     /// per-player text/color), and the built buttons in spec order.
     /// </summary>
-    private (Control Overlay, Label Title, Button[] Buttons) BuildEndgameOverlay(
+    private (Control Overlay, Label Title, Button[] Buttons, Label Eyebrow) BuildEndgameOverlay(
         string eyebrowText, string titleText, int titleFontSize,
         float designWidth, float buttonMinWidth,
         (string Text, Action OnPressed)[] buttonSpecs)
@@ -2259,7 +2499,7 @@ public partial class HudView : OrientationHud, IHudView
         // in the log instead of only in a screenshot.
         Callable.From(() => LogEndgameRowFit(eyebrowText, designWidth, row)).CallDeferred();
 
-        return (overlay, title, buttons);
+        return (overlay, title, buttons, eyebrow);
     }
 
     /// <summary>Horizontal padding an endgame panel spends before its button
@@ -2333,6 +2573,38 @@ public partial class HudView : OrientationHud, IHudView
                 $"[HudView] keypress ({keyEvent.Keycode}) advanced tutorial narration → TutorialMessageTapped");
             GetViewport().SetInputAsHandled();
             TutorialMessageTapped?.Invoke();
+            return;
+        }
+
+        // Game-over pause: Enter / Space / Escape continue; every other
+        // HUD hotkey is swallowed (the chrome it drives is hidden, and
+        // Escape must not open the pause menu). Unbound keys fall through
+        // to the map's own pan/zoom handling.
+        if (_chromeHidden)
+        {
+            switch (keyEvent.Keycode)
+            {
+                case Key.Enter:
+                case Key.KpEnter:
+                case Key.Space:
+                case Key.Escape:
+                    Log.Debug(Log.LogCategory.Hud,
+                        $"[endgame-pause] keypress ({keyEvent.Keycode}) → EndgameContinueRequested");
+                    GetViewport().SetInputAsHandled();
+                    EndgameContinueRequested?.Invoke();
+                    break;
+                case Key.Tab:
+                case Key.Backtab:
+                case Key.N:
+                case Key.U:
+                case Key.T:
+                case Key.G:
+                case Key.H:
+                case Key.Z:
+                case Key.Y:
+                    GetViewport().SetInputAsHandled();
+                    break;
+            }
             return;
         }
 
@@ -2755,6 +3027,9 @@ public partial class HudView : OrientationHud, IHudView
                 bool defeatFraming = defeatedHuman != null;
                 Label title = defeatFraming ? _aiWonLabel : _victoryLabel;
                 title.Text = content.Title;
+                // An AI-vs-AI ending names the winner with no VICTORY eyebrow.
+                _victoryEyebrow.Text = content.Eyebrow;
+                _victoryEyebrow.Visible = content.Eyebrow.Length > 0;
                 title.AddThemeColorOverride("font_color", PlayerPalette.ColorFor(
                     defeatFraming ? defeatedHuman!.Id : winId));
                 _victoryOverlay.Visible = !defeatFraming;
@@ -2832,6 +3107,10 @@ public partial class HudView : OrientationHud, IHudView
                 _tutorialPanel.Visible = false;
             }
         }
+        // Game-over pause: the paint above re-shows chips / the hint panel
+        // freely; put the chrome back under the hide.
+        if (_chromeHidden) ApplyChromeVisibility();
+        RefreshEndgameBanner(state, session);
 
         // Tap-summoned capital alert notice. Visibility is driven by
         // _summonedAlertCoord, set by the controller's tap handler.
@@ -2919,7 +3198,8 @@ public partial class HudView : OrientationHud, IHudView
     {
         // Button built alongside the rest of the HUD chrome; see _Ready.
         if (_automateButton == null) return;
-        _automateButton.Visible = visible;
+        _automateVisible = visible;
+        _automateButton.Visible = visible && !_chromeHidden;
         _automateButton.Disabled = !enabled;
         _automateButton.Selected = running;
         _automateButton.AutomateRunning = running;
@@ -3034,6 +3314,9 @@ public partial class HudView : OrientationHud, IHudView
             // case a refresh painted before the controller latched.
             _victoryOverlay.Visible = false;
             _defeatOverlay.Visible = false;
+            _aiWonOverlay.Visible = false;
+            _vikingsConqueredOverlay.Visible = false;
+            _campaignVictoryOverlay.Visible = false;
         }
     }
 

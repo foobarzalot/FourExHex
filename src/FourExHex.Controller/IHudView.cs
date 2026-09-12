@@ -203,6 +203,33 @@ public interface IHudView
     void SetEndgameOverlaysHeld(bool held);
 
     /// <summary>
+    /// Hide (true) or show (false) every piece of HUD chrome — strips,
+    /// rails, chips, buttons, toasts — leaving only the map, the endgame
+    /// overlays and the continue hint. Latched by the controller for the
+    /// whole of the game-over pause (see <c>GameOperations.EnterEndgamePause</c>)
+    /// so the player sees the finished board unobstructed; released when
+    /// the pause continues. The HUD re-asserts it on every Refresh and
+    /// layout pass.
+    /// </summary>
+    void SetHudChromeHidden(bool hidden);
+
+    /// <summary>
+    /// Show (true) or hide (false) the flashing "{Verb} anywhere to
+    /// continue" hint. The controller shows it once the game-over pause
+    /// has settled plus <see cref="StepPacing.EndgamePauseHintDelayMs"/>,
+    /// and hides it when the pause continues. Purely a visual cue — the
+    /// hint never captures input.
+    /// </summary>
+    void SetEndgameContinueHint(bool shown);
+
+    /// <summary>
+    /// Fires when the player asks to continue past the game-over pause
+    /// from the HUD side (Enter / Space / Escape). Map taps continue via
+    /// the ordinary click events; the controller treats both alike.
+    /// </summary>
+    event Action? EndgameContinueRequested;
+
+    /// <summary>
     /// Coord of the capital whose tap-summoned alert notice is
     /// currently visible, or null when no notice is showing. Read by
     /// the controller's tap handler to implement toggle-off-on-re-tap

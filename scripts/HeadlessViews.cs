@@ -72,6 +72,7 @@ public sealed class HeadlessHudView : IHudView
     public event Action? ClaimVictoryContinueClicked;
     public event Action? ReplayClicked;
     public event Action? TutorialMessageTapped;
+    public event Action? EndgameContinueRequested;
 #pragma warning restore CS0067
 
     public void Refresh(GameState state, SessionState session, bool hasActionableRemaining,
@@ -87,6 +88,8 @@ public sealed class HeadlessHudView : IHudView
     public void SetUndoRedoLocked(bool locked) { }
     public void SetVictoryOverlaySuppressed(bool suppressed) { }
     public void SetEndgameOverlaysHeld(bool held) { }
+    public void SetHudChromeHidden(bool hidden) { }
+    public void SetEndgameContinueHint(bool shown) { }
     public HexCoord? SummonedCapitalAlertCoord => null;
     public void SummonCapitalAlertNotice(HexCoord capital, EconomyOutlook outlook) { }
     public void DismissCapitalAlertNotice() { }

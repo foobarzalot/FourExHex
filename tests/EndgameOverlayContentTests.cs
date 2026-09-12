@@ -54,16 +54,17 @@ public class EndgameOverlayContentTests
     }
 
     [Fact]
-    public void For_AiWinner_NoGameEndingHumanElimination_AnnouncesAiVictory()
+    public void For_AiWinner_NoGameEndingHumanElimination_AnnouncesAiWinWithoutVictoryEyebrow()
     {
         // The game outlived every human (each already saw their personal
         // mid-game defeat screen) and ran on as an AI-vs-AI endgame — the
-        // finish is the surviving AI's victory, announced as such.
+        // finish names the surviving AI, but it is nobody's VICTORY to
+        // trumpet at the spectator: no eyebrow.
         EndgameOverlayContent.Content content = EndgameOverlayContent.For(
             PlayerId.FromIndex(1), winnerName: "Blue", winnerIsHuman: false,
             defeatedHumanName: null);
 
-        Assert.Equal("VICTORY", content.Eyebrow);
+        Assert.Equal("", content.Eyebrow);
         Assert.Equal("Blue wins!", content.Title);
         Assert.True(content.OfferReplay);
     }
@@ -112,5 +113,78 @@ public class EndgameOverlayContentTests
 
         Assert.Null(EndgameOverlayContent.DefeatedHumanFor(
             AiGreen.Id, players));
+    }
+}
+
+/// <summary>
+/// The game-over pause's top banner (Godot-free, Controller layer): the same
+/// VICTORY / DEFEAT framing as the modal it precedes, in the winner's or the
+/// eliminated human's color, plus the mid-game defeat pause (no winner yet).
+/// </summary>
+public class EndgamePauseBannerTests
+{
+    private static readonly Player Red = new("Red", PlayerId.FromIndex(0));
+    private static readonly Player Blue = new("Blue", PlayerId.FromIndex(1), isAi: true);
+    private static readonly IReadOnlyList<Player> Roster = new List<Player> { Red, Blue };
+
+    [Fact]
+    public void HumanWinner_IsVictoryInTheWinnersColor()
+    {
+        EndgameOverlayContent.Banner? banner = EndgameOverlayContent.PauseBanner(
+            winner: Red.Id, pendingDefeatScreen: null, Roster);
+
+        Assert.NotNull(banner);
+        Assert.Equal("VICTORY", banner!.Text);
+        Assert.Equal(Red.Id, banner.Color);
+    }
+
+    [Fact]
+    public void AiWinner_OverAHuman_IsDefeatInTheLosersColor()
+    {
+        EndgameOverlayContent.Banner? banner = EndgameOverlayContent.PauseBanner(
+            winner: Blue.Id, pendingDefeatScreen: Red.Id, Roster);
+
+        Assert.NotNull(banner);
+        Assert.Equal("DEFEAT", banner!.Text);
+        Assert.Equal(Red.Id, banner.Color);
+    }
+
+    [Fact]
+    public void VikingWipeout_IsDefeatInTheLosersColor()
+    {
+        EndgameOverlayContent.Banner? banner = EndgameOverlayContent.PauseBanner(
+            winner: PlayerId.None, pendingDefeatScreen: Red.Id, Roster);
+
+        Assert.NotNull(banner);
+        Assert.Equal("DEFEAT", banner!.Text);
+        Assert.Equal(Red.Id, banner.Color);
+    }
+
+    [Fact]
+    public void MidGameHumanDefeat_NoWinnerYet_IsDefeatInTheLosersColor()
+    {
+        EndgameOverlayContent.Banner? banner = EndgameOverlayContent.PauseBanner(
+            winner: null, pendingDefeatScreen: Red.Id, Roster);
+
+        Assert.NotNull(banner);
+        Assert.Equal("DEFEAT", banner!.Text);
+        Assert.Equal(Red.Id, banner.Color);
+    }
+
+    [Fact]
+    public void AiWinner_AfterAnAiVsAiEndgame_ShowsNoBanner()
+    {
+        // The humans fell earlier and dismissed their own defeat screens;
+        // the AI-vs-AI ending is nobody's victory to trumpet at them — the
+        // modal still announces the winner, the banner stays quiet.
+        Assert.Null(EndgameOverlayContent.PauseBanner(
+            winner: Blue.Id, pendingDefeatScreen: null, Roster));
+    }
+
+    [Fact]
+    public void NothingEnded_NoBanner()
+    {
+        Assert.Null(EndgameOverlayContent.PauseBanner(
+            winner: null, pendingDefeatScreen: null, Roster));
     }
 }

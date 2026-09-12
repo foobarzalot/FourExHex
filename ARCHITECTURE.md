@@ -132,8 +132,8 @@ CONTROLLER (pure C#) ─ GameController
   capture reconciliation:
     HandleCapture → TerritoryFinder.Recompute(grid, prev, treasury) (= FindAll → CapitalReconciler.Reconcile
       → Treasury.ReconcileAfterCapture)
-      → detect freshly-eliminated colors (capital before, none after) → PlaySound(PlayerDefeated); set
-        PendingDefeatScreen for human eliminations
+      → detect freshly-eliminated colors (capital before, none after) → PlaySound(PlayerDefeated); a human
+        elimination also sets PendingDefeatScreen, plays the loss cue, and enters the game-over pause
       → _map.RebuildAfterTerritoryChange
       → WinConditionRules.WinnerByDomination (mid-turn)
 
@@ -362,9 +362,11 @@ AUDIO (autoload)
   verifies is the controller's decision, not a mirrored view policy). The one view-owned exception is the
   pinned mute (HexMapView.SetMutePinned): a hard audio-off on PlaySound / FlashRejection's AudioBus dispatch,
   set by the Instructions demo board so its looping playback never sounds over the live game — audio only,
-  animations/VFX unaffected, orthogonal to _silentMode. Every cue incl. Bankruptcy/GameWon obeys
-  the gate with no exceptions, so a silent batch is fully silent; a manually played human turn is never silent —
-  silence covers only the fast-forwards. IsSilent() omits the PendingDefeatScreen term
+  animations/VFX unaffected, orthogonal to _silentMode. Every per-action cue obeys
+  the gate, so a silent batch is fully silent; a manually played human turn is never silent —
+  silence covers only the fast-forwards. The game-over cues are the one carve-out: GameWon and the loss cue
+  (Bankruptcy, reused) go through EmitEndgameCue, which plays through an Instant AI/automate batch — the moment
+  the game turns must not be swallowed — and drops only under instant replay. IsSilent() omits the PendingDefeatScreen term
   that InSilentAiBatch() carries, so the AI blow that destroys a human's capital stays silent even as it queues
   the defeat overlay.
 
@@ -526,13 +528,14 @@ Mutation/orchestration core (what both live AI and replay need) lives in `src/Fo
 - **`GameOperations`** owns mutation + turn-lifecycle helpers:
   - Per-action execute — `ExecuteAiMove`, `ExecuteAiBuyUnit`, `ExecuteAiBuyCombine`, `ExecuteAiBuildTower`, `ApplyLongPressRally` (validation + view/capture envelope; the bare mutation is `AiActionCore` in Model, shared with `AiSimulator` and the human handlers)
   - Capture aftermath — `ApplyActionAftermath` (the shared post-action effects sequence), `HandleCapture` (+ private `SnapshotCapitals` / `ColorsWithCapital` / `LogCaptureDiff`), `DispatchActionSound`, `DeclareWinner`
+  - Game-over pause — `EnterEndgamePause` (called by `DeclareWinner` and by the human-elimination branch of `HandleNewlyDefeated`), `ExtendEndgamePause` (move paths re-arm the hint with their travel settle), `RearmEndgamePauseHint` (after a pacer `Cancel`), `ContinueEndgamePause`, `ExitEndgamePause`; `HoldEndgameOverlaysForReplay` / `ReleaseEndgameOverlaysAfterReplay` for the playback-wide hold. `EndgamePauseEnabled` is the master switch (off in tutorial Preview/Record, on again at graduation). The pacer comes in through the ctor (`aiPacer`) for the hint chain. See "Game-over pause" under Win conditions.
   - Turn transitions — `ReseedRngForCurrentTurn` (+ static `MixSeed`), `EndOfTurnProcessing` (+ private `LogGameEndDiagnostics`), `AdvanceToNextActivePlayer`, `StartPlayerTurn` (+ static `ResetMovementFor`, private `LogTurnStart`)
   - Game-end — `CheckGameEndConditions` (fires `GameEnded` via the `onGameEnded` ctor callback; controller owns the public event)
-  - View sync — `RefreshViews` (also pushes the Automate button state via `IHudView.SetAutomateState`, reading the `isAutomating` / `isAutomateExhausted` ctor callbacks), `ShowHighlightAndRefresh`, `InvokeAfterRefresh`, private `HasAnyActionableForCurrentPlayer`
+  - View sync — `RefreshViews` (also pushes the Automate button state via `IHudView.SetAutomateState`, reading the `isAutomating` / `isAutomateExhausted` ctor callbacks; arms a fresh game-over pause's hint chain; hands the occupant pass no current player once the game is over or paused, so every unit and capital renders inert), `ShowHighlightAndRefresh`, `InvokeAfterRefresh`, private `HasAnyActionableForCurrentPlayer`
   - Shared instant loop — `RunInstantTick(active, step, onExhausted, reschedule)`, the chunked frame-yielded fast-forward behind both live-AI instant (`AiTurnDriver`) and instant replay (`ReplayRecorder`); tick budget `StepPacing.InstantBudgetMs`
-  - Silent-mode — `IsSilent` (per-action cue gate) + `EmitSound` / `EmitDestruction` / `EmitTerrainCaptureFx` / `EmitMountainTowerFx` (silent-gated wrappers over `_map.PlaySound` / `PlayDestructionEffect` / `PlayTerrainCaptureEffect`, the only path controllers use); `RefreshSilentMode` (drives the view's `_silentMode` flag for view-internal tween/tide suppression), `InSilentAiBatch` (input gate)
+  - Silent-mode — `IsSilent` (per-action cue gate) + `EmitSound` / `EmitDestruction` / `EmitTerrainCaptureFx` / `EmitMountainTowerFx` (silent-gated wrappers over `_map.PlaySound` / `PlayDestructionEffect` / `PlayTerrainCaptureEffect`, the only path controllers use); `RefreshSilentMode` (drives the view's `_silentMode` flag for view-internal tween/tide suppression), `InSilentAiBatch` (input gate), private `EmitEndgameCue` (game-over cues: batch-proof, instant-replay-silent); `HumanInputLocked` (= `InSilentAiBatch() || IsNeutralSeat || EndgamePauseActive`) gates every mutating human handler
   - Helpers — `WasFriendlyUnitAt`
-  - Mutable shared state (public properties; written by the instant loop / replay reset paths) — `Rng` (read-only getter), `GameEndedFired`, `HumanTurnFiredForCurrentTurn`, `SuppressMapRebuild`
+  - Mutable shared state (public properties; written by the instant loop / replay reset paths) — `Rng` (read-only getter), `GameEndedFired`, `HumanTurnFiredForCurrentTurn`, `SuppressMapRebuild`, `EndgamePauseActive` (read-only), `EndgamePauseEnabled`
 
 - **`GameController`** retains input + turn rotation:
   - All `IHexMapView` / `IHudView` event handlers (`OnTileClicked`, `OnEndTurnPressed`, Undo/Redo, etc.) and the `TrackHandler` wrapper (with its `_pendingHumanBeat` buffer)
@@ -726,11 +729,26 @@ void SetUndoRedoLocked(bool locked);
 // — tutorial game-over flows through the bottom tutorial panel instead.
 void SetVictoryOverlaySuppressed(bool suppressed);
 
-// Hold (true) / release (false) BOTH endgame overlays (victory + defeat).
-// Latched by the controller when a MOVE ends the game or defeats the human,
-// released by a pacer-scheduled reveal one settle delay later, so the modal
-// appears after the move's travel tween lands, never over a unit in flight.
+// Hold (true) / release (false) every endgame overlay (victory, defeat,
+// AI-won, vikings, campaign). Latched for the whole game-over pause and
+// for the whole of a replay playback; released when the pause continues
+// (or, with no winner, when the replay ends).
 void SetEndgameOverlaysHeld(bool held);
+
+// Hide (true) / restore (false) all HUD chrome — corner zones, rails or
+// bottom bar, corner strips, seed label, toasts, banners — leaving the map,
+// the endgame overlays, the pause banner and the continue hint. Latched for
+// the game-over pause; re-asserted by Refresh and every layout pass.
+void SetHudChromeHidden(bool hidden);
+
+// Show / hide the flashing "{Verb} anywhere to continue" hint on the
+// controller's schedule (the tutorial's own 0.8 s reveal timer is not used).
+// Click-through: the tap it invites reaches the map as an ordinary click.
+void SetEndgameContinueHint(bool shown);
+
+// The HUD-side continue for the game-over pause: Enter / Space / Escape.
+// Map taps continue through TileClicked / OffGridClicked / TileLongClicked.
+event Action? EndgameContinueRequested;
 
 // Automate toggle state, pushed from GameOperations.RefreshViews (the single
 // refresh path). visible = false in tutorial Preview/Record — the button isn't
@@ -872,9 +890,11 @@ Two independent checks from different places:
 - **Mid-turn (domination)** — `WinConditionRules.WinnerByDomination` fires in `HandleCapture` after every capture. Requires one color own *every* tile. Ends the game immediately, clears undo.
 - **End-of-turn (sole capital-bearer)** — `WinConditionRules.WinnerAtEndOfTurn` fires in `EndOfTurnProcessing`. Looser, typical path: current player wins if no other player has a capital-bearing territory.
 
-Viking Raiders suppresses **both** checks (and the claim-victory prompt) while `VikingRaidersRules.ThreatRemains` — see its section. Fog Of War leaves both awarded wins alone and gates only the claim-victory prompt. `DeclareWinner` is the centralized setter for `SessionState.Winner`; fires `PlaySound(GameWon)` iff the winner is human.
+Viking Raiders suppresses **both** checks (and the claim-victory prompt) while `VikingRaidersRules.ThreatRemains` — see its section. Fog Of War leaves both awarded wins alone and gates only the claim-victory prompt. `DeclareWinner` is the centralized setter for `SessionState.Winner`: it plays GameWon for a human winner, else the loss cue (Bankruptcy, reused) when any roster player is human (all-AI runs stay silent), and enters the game-over pause.
 
-**Game-over presentation** (`EndgameOverlayContent`, unit-tested, consumed by `HudView.Refresh`): DEFEAT framing (no Replay offer) applies to exactly two endings — a viking total wipeout (winner `PlayerId.None`, matches no roster player, no sound, "The Vikings have conquered the island!"), and an AI winning in the same beat a human's elimination ended the game, voiced like the mid-game elimination overlay ("&lt;Loser&gt; defeated" in the loser's color; `EndgameOverlayContent.DefeatedHumanFor` reads the loser from `SessionState.PendingDefeatScreen`, which survives the winner declaration because the HUD only suppresses the mid-game defeat overlay, never clears the field). Every other winner — a human, or an AI that outlasted an AI-vs-AI endgame after the eliminated humans dismissed their own defeat screens — gets the ordinary VICTORY announcement ("&lt;Winner&gt; wins!" in the winner's color, Replay offered). The overlay choice logs under `Render` as `HudView: game-over overlay …`.
+**Game-over presentation** (`EndgameOverlayContent`, unit-tested, consumed by `HudView.Refresh`): DEFEAT framing (no Replay offer) applies to exactly two endings — a viking total wipeout (winner `PlayerId.None`, matches no roster player, no sound, "The Vikings have conquered the island!"), and an AI winning in the same beat a human's elimination ended the game, voiced like the mid-game elimination overlay ("&lt;Loser&gt; defeated" in the loser's color; `EndgameOverlayContent.DefeatedHumanFor` reads the loser from `SessionState.PendingDefeatScreen`, which survives the winner declaration because the HUD only suppresses the mid-game defeat overlay, never clears the field). A human winner gets the VICTORY announcement ("&lt;Winner&gt; wins!" in the winner's color, Replay offered). An AI that outlasted an AI-vs-AI endgame after the eliminated humans dismissed their own defeat screens gets the same title and Replay offer with an empty eyebrow — the VICTORY word is reserved for a human winner (`HudView` hides the eyebrow label when the content's eyebrow is empty). The overlay choice logs under `Render` as `HudView: game-over overlay …`.
+
+**Game-over pause.** Every declared winner and every mid-game human elimination holds its modal back so the player can take in the finished board. `GameOperations.EnterEndgamePause` (idempotent; from `DeclareWinner` and the human branch of `HandleNewlyDefeated`) latches `IHudView.SetEndgameOverlaysHeld(true)` and `SetHudChromeHidden(true)` before any refresh can paint, so the HUD chrome vanishes and the modal stays hidden while the win/loss cue plays at once. The hint chain arms on the next `RefreshViews` — pacer `Schedule(settle)` then `ScheduleUnscaled(StepPacing.EndgamePauseHintDelayMs = 1500)` → `SetEndgameContinueHint(true)` — with a generation stamp so a continue or a re-arm orphans a chain already in the pacer; a game-ending / defeating MOVE re-arms via `ExtendEndgamePause(MoveSettleDelayMs(distance))` first (`AiTurnDriver.StepAiExecute`, `GameController.MaybeExtendEndgamePauseForMove` on the click-move and automate tracks, `ReplayRecorder.StepReplayExecute`) so the hint never appears over a unit in flight. The settle scales with the AI-speed multiplier like the tween; the 1.5 s does not. It applies on Instant too (`EndInstantAiBatch` rebuilds the map before painting the paused board). Pan/zoom stay live in the view; every mutating handler is inert through `HumanInputLocked`; a clean tap anywhere (`OnTileClicked` / `OnOffGridClicked` / `OnTileLongClicked` continue before `TrackHandler`, so no undo entry), the HUD's `EndgameContinueRequested` (Enter / Space / Escape — every other bound hotkey is swallowed, unbound keys fall through to the map's pan/zoom), or the Android back gesture (`Main.HandleSystemBack` step 0) calls `ContinueEndgamePause`: hint hidden, chrome restored, hold released, repaint — the modal appears. `OnDefeatContinuePressed` reached mid-pause (scripted flows) continues first. `ExitEndgamePause` resets the latches without a repaint on `Resume`, `AbandonGame` and `BeginReplay`. The pause is off (`EndgamePauseEnabled`) in tutorial Preview/Record and the demo players built on them, and on again once a played tutorial graduates. Headless runs are unaffected — `GameEnded` fires before any paint. The paused board renders every unit and capital inert (`RefreshViews` passes no current player) and, in the HUD, shows a bare white serif VICTORY / DEFEAT banner at the top (`EndgameOverlayContent.PauseBanner`: VICTORY for a human winner, DEFEAT for a human eliminated by an AI, the Vikings, or mid-game; nothing for an AI-vs-AI ending) that fades in on entry and fades out when the hint appears. Logs under `Hud` (Debug): `[endgame-pause] enter reason=winner|claim|vikings|defeat`, `hint armed settle=…`, `hint shown`, `continue via=tap|key|back|dismiss`, `exit`, plus the HUD's `chrome hidden|restored`, `hint visible|hidden`, `banner "…" fading in|out`. Pinned by `tests/GameControllerTests.EndgamePause.cs` and `EndgamePauseBannerTests`.
 
 ### Claim victory prompt
 
@@ -889,7 +909,7 @@ Dismissal records only on user action (not on show), so a save+reload with the o
 
 ### Player elimination
 
-`HandleCapture` diffs colors-with-capitals before vs after reconcile. A color with ≥1 capital before and none after was eliminated: `PlaySound(PlayerDefeated)` fires; if human, `SessionState.PendingDefeatScreen` is set so the HUD shows a defeat overlay. The AI loop pauses at the next `StepAiExecute` while the overlay is up; `OnDefeatContinuePressed` clears the flag and re-arms the pacer.
+`HandleCapture` diffs colors-with-capitals before vs after reconcile. A color with ≥1 capital before and none after was eliminated: `PlaySound(PlayerDefeated)` fires; if human, `SessionState.PendingDefeatScreen` is set, the loss cue plays, and the game-over pause enters (outside replay) — the defeat overlay appears once the player continues past the pause. The AI loop pauses at the next `StepAiExecute` while the overlay is up; `OnDefeatContinuePressed` clears the flag and re-arms the pacer.
 
 ### Rotation
 
@@ -962,6 +982,7 @@ Save-format consequences (decoupling list position from color slot, baking map k
 HexMapView._UnhandledInput
   → TileClicked(tile)
 GameController.OnTileClicked
+  ├─ game-over pause active → ContinueEndgamePause, return (no TrackHandler, no undo entry)
   ├─ session.Mode == None → skip pending branch
   ├─ tile.territory is current player's → SetSelection(territory)
   │     ├─ session.SelectedTerritory = territory
@@ -980,7 +1001,7 @@ GameController.OnTileClicked
 
 ```
 HexMapView → TileClicked(enemy tile)
-GameController.OnTileClicked  ── wrapped in TrackHandler:
+GameController.OnTileClicked  ── (pause pre-check as above) wrapped in TrackHandler:
   pre = CaptureCurrentSnapshot()       // game + session, BEFORE body
   └─ OnTileClickedBody(tile)
         ├─ session.Mode == MovingUnit
@@ -999,7 +1020,8 @@ GameController.OnTileClicked  ── wrapped in TrackHandler:
               │  │     │     │     (FindAll + CapitalReconciler.Reconcile +
               │  │     │     │       Treasury.ReconcileAfterCapture)
               │  │     │     ├─ if a color lost its last capital:
-              │  │     │     │     PlaySound(PlayerDefeated); human → PendingDefeatScreen
+              │  │     │     │     PlaySound(PlayerDefeated); human → PendingDefeatScreen,
+              │  │     │     │       loss cue, EnterEndgamePause
               │  │     │     ├─ _map.RebuildAfterTerritoryChange()
               │  │     │     └─ if WinConditionRules.WinnerByDomination → DeclareWinner, clear undo
               │  │     ├─ RebindSelectionToContaining(destination)   // the onCaptured hook
@@ -1059,7 +1081,8 @@ Rejected clicks keep the pending mode, `SelectedTerritory`, `MoveSource`, and mo
 
 ```
 HexMapView → TileLongClicked(target tile)
-GameController.OnTileLongClicked  ── wrapped in TrackHandler:
+GameController.OnTileLongClicked  ── game-over pause active → ContinueEndgamePause, return;
+                                     else wrapped in TrackHandler:
   └─ OnTileLongClickedBody(tile)
         ├─ ignored if game over, no tile, or any pending mode
         ├─ ignored unless tile color == current player's
@@ -1137,10 +1160,10 @@ StepAiExecute:
   │     + ExecuteAiMove/BuyUnit/BuildTower/… ; returns result coord
   │     (null = unrecognised → defensive return)
   ├─ CheckGameEndConditions
-  ├─ if the beat was a MOVE that ended the game or set PendingDefeatScreen:
-  │     HoldEndgameOverlays (hud gate) BEFORE any refresh paints, and
-  │     schedule RevealEndgameOverlays after SettleDelayFor(action) — the
-  │     modal appears once the travel tween has landed
+  ├─ if the beat was a MOVE and the game-over pause just entered (the move
+  │     won the game or eliminated a human): ExtendEndgamePause(SettleDelayFor)
+  │     BEFORE any refresh arms the baseline chain — the continue hint waits
+  │     for the travel tween to land
   ├─ ShowHighlightAndRefresh(resulting terr.)
   ├─ if PendingDefeatScreen: RefreshSilentMode + RefreshViews, return
   │     without scheduling next beat — dismissal handler resumes via Schedule
@@ -1220,7 +1243,7 @@ AutomateInstantStep:  halt / step-cap / chooser-null → StopAutomation(...) →
 - **Interruption is a flag, never a cancel**: `_automating` is checked at every beat entry (and gates the instant drain via `RunInstantTick`'s `active`); `StopAutomation` clears it and stale scheduled beats no-op (the shared pacer is never cancelled). Every `TrackHandler`-wrapped human input stops a running loop at handler entry (`_inAutomateStep` exempts the loop's own selection + move steps); the non-wrapped handlers (undo/redo ×4, End Turn, defeat/claim) carry explicit `StopAutomation("input")` calls. Stops always land *between* moves. When the stop ends an instant batch (`_automateTrackInstant`), `StopAutomation` also runs the batch-end cleanup: structural rebuild (the drain suppressed per-capture rebuilds) + `RefreshSilentMode` (lifts the view's silent flag).
 - **Exhaustion latch** (`_automateExhausted`): set only by the chooser-null stop; the button greys out (re-pressing would no-op) even if manual actions remain. Cleared by `ApplySnapshot` (any undo/redo), a manual game-mutating `TrackHandler` push (which triggers one extra refresh — the body's own refresh ran pre-clear), and `EndTurnNow`. User interrupts don't latch.
 - **Exhaustion lights End Turn**: the chooser-null stop also unions every still-actionable territory's capital into `VisitedThisTurnCapitals` (one `TrackHandler` entry, undoable; no-op when the loop's own selections already visited them), and the latch counts as "finished the last territory" in the End Turn CTA condition — so a completed automation run always leaves End Turn lit even when the chooser declined an affordable action or left an actionable territory selected. Logged as `[automate] exhausted → turn-visited += N`.
-- **Pacing**: `UserSettings.HumanSpeed` (the "Human Player Speed" Settings row — it also scales the manual click-to-move travel tween), independent of AiSpeed/ReplaySpeed. The shared pacer's multiplier closure in `Main` branches on `GameController.IsAutomating` for the paced speeds; Instant never reaches the multiplier — `ScheduleAutomateStep` routes it to the unscaled chunked track, making Automate the third `RunInstantTick` wrapper alongside live-AI Instant and instant replay. A winning automate move latches the same endgame-overlay hold + scheduled reveal as the AI driver (`MaybeHoldOverlayForWinningMove`, shared with the manual-move path).
+- **Pacing**: `UserSettings.HumanSpeed` (the "Human Player Speed" Settings row — it also scales the manual click-to-move travel tween), independent of AiSpeed/ReplaySpeed. The shared pacer's multiplier closure in `Main` branches on `GameController.IsAutomating` for the paced speeds; Instant never reaches the multiplier — `ScheduleAutomateStep` routes it to the unscaled chunked track, making Automate the third `RunInstantTick` wrapper alongside live-AI Instant and instant replay. A winning automate move re-arms the game-over pause's hint with its travel settle like the AI driver (`MaybeExtendEndgamePauseForMove`, shared with the manual-move path), on the paced and Instant tracks alike.
 - **Silence**: `GameOperations.InSilentAutomateBatch()` (= `automateSilentMode() && isAutomating()`) joins the cue gate (`IsSilent`) and the view flag (`RefreshSilentMode`), so an Instant batch plays no sounds/VFX/tweens and never pans. It deliberately does NOT join `HumanInputLocked` — input between the drain's frame yields stays live so it can stop the loop. Paced automate is never silent: per-move sounds and the camera pan play at every paced speed.
 - **Instrumentation**: `Log.LogCategory.Automate` Debug — start (turn/player/undo depth), one `pan ->` line per paced preview, one line per move (step index, action, undo depth after push), track transitions (`paced→instant` / `instant→paced`), stop with reason (`user` / `input` / `exhausted` / `step-cap` / `overlay` / `game-over` / `not-human`), and `instant batch end` with the move count.
 - Pinned by `tests/GameControllerTests.Automate.cs` (undo walk-back incl. selection entries, interrupt-between-moves via `GodotAiPacer` + `ManualTimerFactory`, beat-stack sync, exhaustion-latch lifecycle, selection rebind, camera pan, instant silence/no-pan/parity/overlay-stop).
@@ -1234,6 +1257,10 @@ Mirrors the AI step machine, consuming a recorded `ReplayBeat` log instead of as
 ```
 BeginReplay (public, called from victory-overlay Replay button):
   ├─ _aiPacer.Cancel  (drop stragglers)
+  ├─ ExitEndgamePause; HoldEndgameOverlaysForReplay — every endgame overlay
+  │     stays held for the whole playback, so recorded mid-game defeat
+  │     dialogs never re-paint (chrome stays up); the replayed winner's own
+  │     game-over pause takes over at the end
   ├─ _replayMode = true, _replayIndex = 0, _gameEndedFired = false
   ├─ _initialSnapshot.ApplyTo(grid, treasury) → territories
   ├─ _state.Turns.Reset(initialPlayerIndex, initialTurnNumber)
@@ -1284,9 +1311,13 @@ StepReplayExecute:
   │                            Tutorial Preview consumes narration via
   │                            TutorialNarrationDriver)
   ├─ Move / RejectedMove: _map.ShowMoveSource(null)  (pickup done)
-  ├─ CheckGameEndConditions; RefreshViews
+  ├─ CheckGameEndConditions; a game-ending Move beat → ExtendEndgamePause
+  │     (travel settle); RefreshViews
   ├─ if IsGameOver → EndReplay (recorded game-ending beat re-fired GameEnded;
-  │     Main re-runs SetReplayAvailable)
+  │     Main re-runs SetReplayAvailable; the Cancel inside EndReplay dropped
+  │     the pause's hint chain, so RearmEndgamePauseHint lets the closing
+  │     RefreshViews arm it again — without a winner EndReplay releases the
+  │     playback-wide hold instead)
   └─ schedule next StepReplayPreview after
        AiBetweenPlayersDelayMs (if beat was EndTurn),
        MoveSettleDelayMs(distance) (if beat was a Move — covers the

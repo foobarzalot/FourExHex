@@ -50,6 +50,12 @@ public static class StepPacing
     // either.
     public const int VikingSpawnPresentationMs = 2000;
 
+    // Game-over pause: how long the finished board sits unobstructed after
+    // it settles before the "{Verb} anywhere to continue" hint starts
+    // flashing. Scheduled UNSCALED — a slower AI speed shouldn't stretch
+    // the player's own moment of appreciation.
+    public const int EndgamePauseHintDelayMs = 1500;
+
     // Distance-scaled move travel: base + per-hex time, capped so a
     // board-crossing move doesn't drag the beat out indefinitely. The
     // per-hex term is what makes long moves read as travel instead of a

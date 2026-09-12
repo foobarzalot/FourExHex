@@ -125,6 +125,28 @@ public class GameOperations
     /// </summary>
     public bool SuppressMapRebuild { get; set; }
 
+    /// <summary>True while the game-over pause is holding the endgame
+    /// modal back (see <see cref="EnterEndgamePause"/>).</summary>
+    public bool EndgamePauseActive { get; private set; }
+
+    /// <summary>
+    /// Master switch for the game-over pause. Tutorial Preview / Record
+    /// (and the demo players built on them) run with it off — their
+    /// endgame overlays are suppressed and the script owns the
+    /// game-over signaling — and the controller flips it on when a
+    /// played tutorial graduates to ordinary free play.
+    /// </summary>
+    public bool EndgamePauseEnabled { get; set; } = true;
+
+    private readonly IAiPacer _aiPacer;
+    // Hint chain bookkeeping: armed once per pause (by RefreshViews or an
+    // explicit Extend); the generation stamp lets a continue/exit — or a
+    // move path re-arming with its own settle delay — orphan a chain
+    // already sitting in the pacer without needing a per-callback cancel.
+    private bool _endgameHintArmed;
+    private int _endgameHintGen;
+    private int _endgameSettleMs = StepPacing.AiActionDelayMs;
+
     public GameOperations(
         GameState state,
         SessionState session,
@@ -143,8 +165,10 @@ public class GameOperations
         Action? onAfterRefresh,
         Func<bool>? isAutomating = null,
         Func<bool>? isAutomateExhausted = null,
-        Func<bool>? automateSilentMode = null)
+        Func<bool>? automateSilentMode = null,
+        IAiPacer? aiPacer = null)
     {
+        _aiPacer = aiPacer ?? new SynchronousAiPacer();
         _state = state;
         _session = session;
         _map = map;
@@ -236,7 +260,7 @@ public class GameOperations
     /// batch.
     /// </summary>
     public bool HumanInputLocked =>
-        InSilentAiBatch() || _state.Turns.IsNeutralSeat;
+        InSilentAiBatch() || _state.Turns.IsNeutralSeat || EndgamePauseActive;
 
     /// <summary>
     /// True while the human's Automate loop is fast-forwarding under
@@ -277,6 +301,19 @@ public class GameOperations
     {
         if (IsSilent()) return;
         _map.PlaySound(kind, at);
+    }
+
+    /// <summary>
+    /// Route a game-over cue (win fanfare, loss / defeat cue) to the view.
+    /// Unlike <see cref="EmitSound"/> it plays through an Instant AI or
+    /// automate batch — the moment the game turns is the one thing the
+    /// fast-forward must not swallow — and drops only under instant
+    /// replay, which silences everything.
+    /// </summary>
+    private void EmitEndgameCue(SoundEffect kind)
+    {
+        if (_isReplayInstantActive()) return;
+        _map.PlaySound(kind, null);
     }
 
     /// <summary>
@@ -1068,6 +1105,11 @@ public class GameOperations
     /// </summary>
     public void RefreshViews()
     {
+        // The single UI update path is also where a fresh game-over pause
+        // arms its hint chain: every ending refreshes, so no ending can be
+        // missed, and a move path that already armed with its own settle
+        // delay (ExtendEndgamePause) is left alone.
+        if (EndgamePauseActive && !_endgameHintArmed) ArmEndgameHint();
         long tWhole = Log.Stamp();
         bool hasActionable = HasAnyActionableForCurrentPlayer();
         // Next/Previous Territory only moves the selection to some OTHER
@@ -1100,8 +1142,13 @@ public class GameOperations
             minusWorked.Remove(workedCapital);
             suppressedCapitals = minusWorked;
         }
-        _map.RefreshOccupantVisuals(_state.Turns.CurrentPlayer.Id, _state.Treasury,
-            suppressedCapitals);
+        // A finished board — game over, or the game-over pause holding a
+        // mid-game defeat — renders every unit and capital inert: no
+        // "current player" means nothing is actionable, so nothing pulses.
+        PlayerId? actor = _session.IsGameOver || EndgamePauseActive
+            ? null
+            : _state.Turns.CurrentPlayer.Id;
+        _map.RefreshOccupantVisuals(actor, _state.Treasury, suppressedCapitals);
         Log.Since(Log.LogCategory.Capture, "[hitch] RefreshOccupantVisuals", tOccupants);
         // Rising Tides: telegraph the current player's locked tide
         // forecast for the whole turn ("these tiles erode at turn end"). Empty
@@ -1407,8 +1454,16 @@ public class GameOperations
             .FirstOrDefault(p => p.Id == winnerColor);
         if (winnerPlayer != null && !winnerPlayer.IsAi)
         {
-            EmitSound(SoundEffect.GameWon);
+            EmitEndgameCue(SoundEffect.GameWon);
         }
+        else if (_state.Turns.Players.Any(p => !p.IsAi))
+        {
+            // A human is watching and didn't win: the loss cue (the
+            // bankruptcy sting until a dedicated one exists). All-AI
+            // rosters stay silent.
+            EmitEndgameCue(SoundEffect.Bankruptcy);
+        }
+        EnterEndgamePause(winnerColor.IsNone ? "vikings" : byClaim ? "claim" : "winner");
     }
 
     /// <summary>
@@ -1656,31 +1711,128 @@ public class GameOperations
     /// occupant type) > generic place (only if the move was consumed).
     /// Reposition onto own-empty stays silent.
     /// </summary>
+    // --- Game-over pause --------------------------------------------------
+    //
+    // Every declared winner and every mid-game human defeat holds its
+    // modal back so the player can take in the finished board: the HUD
+    // chrome hides and the endgame overlays are held at once, the board
+    // settles (a move's travel tween stretches this via
+    // ExtendEndgamePause), then StepPacing.EndgamePauseHintDelayMs later
+    // the continue hint flashes. Pan/zoom stay live in the view; a clean
+    // tap anywhere, or the HUD's Enter/Space/Escape request, continues.
+
     /// <summary>
-    /// Latch the HUD's endgame-overlay hold: a game-ending / defeating
-    /// MOVE keeps its victory/defeat modal hidden while the travel tween
-    /// is in flight. Must run BEFORE the beat's refresh paints. Paired
-    /// with a pacer-scheduled <see cref="RevealEndgameOverlays"/> one
-    /// settle delay later.
+    /// Enter the game-over pause: hold the endgame overlays and hide the
+    /// HUD chrome immediately (before any refresh can paint the modal).
+    /// Idempotent; a no-op while <see cref="EndgamePauseEnabled"/> is off.
+    /// The hint chain is armed by the next <see cref="RefreshViews"/>
+    /// (baseline settle) or by <see cref="ExtendEndgamePause"/>.
     /// </summary>
-    public void HoldEndgameOverlays()
+    public void EnterEndgamePause(string reason)
     {
-        Log.Debug(Log.LogCategory.Hud, "[overlay] hold endgame overlays (move in flight)");
+        if (!EndgamePauseEnabled || EndgamePauseActive) return;
+        EndgamePauseActive = true;
+        _endgameHintArmed = false;
+        _endgameSettleMs = StepPacing.AiActionDelayMs;
+        Log.Debug(Log.LogCategory.Hud, $"[endgame-pause] enter reason={reason}");
         _hud.SetEndgameOverlaysHeld(true);
+        _hud.SetHudChromeHidden(true);
     }
 
     /// <summary>
-    /// Release the endgame-overlay hold and repaint so the
-    /// victory/defeat modal appears — scheduled by the move's executor
-    /// to land after <see cref="StepPacing.MoveSettleDelayMs"/>, i.e.
-    /// after the travel tween has settled.
+    /// A game-ending / defeating MOVE re-arms the hint chain with its
+    /// distance-scaled settle delay so the hint never appears over a
+    /// unit still in flight. Must run before the beat's refresh (which
+    /// would otherwise arm the baseline chain). No-op outside a pause.
     /// </summary>
-    public void RevealEndgameOverlays()
+    public void ExtendEndgamePause(int settleMs)
     {
-        Log.Debug(Log.LogCategory.Hud, "[overlay] reveal endgame overlays");
-        _hud.SetEndgameOverlaysHeld(false);
+        if (!EndgamePauseActive) return;
+        _endgameSettleMs = settleMs;
+        ArmEndgameHint();
+    }
+
+    /// <summary>
+    /// After a pacer <c>Cancel()</c> (replay end) orphaned the armed
+    /// chain, let the next <see cref="RefreshViews"/> arm it again.
+    /// </summary>
+    public void RearmEndgamePauseHint()
+    {
+        if (EndgamePauseActive) _endgameHintArmed = false;
+    }
+
+    private void ArmEndgameHint()
+    {
+        _endgameHintArmed = true;
+        int gen = ++_endgameHintGen;
+        int settleMs = _endgameSettleMs;
+        Log.Debug(Log.LogCategory.Hud,
+            $"[endgame-pause] hint armed settle={settleMs}ms +{StepPacing.EndgamePauseHintDelayMs}ms");
+        // Settle scales with the AI-speed multiplier (it tracks the
+        // travel tween); the appreciation delay itself does not.
+        _aiPacer.Schedule(() =>
+        {
+            if (gen != _endgameHintGen || !EndgamePauseActive) return;
+            _aiPacer.ScheduleUnscaled(() =>
+            {
+                if (gen != _endgameHintGen || !EndgamePauseActive) return;
+                Log.Debug(Log.LogCategory.Hud, "[endgame-pause] hint shown");
+                _hud.SetEndgameContinueHint(true);
+            }, StepPacing.EndgamePauseHintDelayMs);
+        }, settleMs);
+    }
+
+    /// <summary>
+    /// Continue past the pause: hide the hint, restore the chrome,
+    /// release the overlay hold and repaint so the modal appears.
+    /// <paramref name="via"/> names the input for the log.
+    /// </summary>
+    public void ContinueEndgamePause(string via)
+    {
+        if (!EndgamePauseActive) return;
+        Log.Debug(Log.LogCategory.Hud, $"[endgame-pause] continue via={via}");
+        ClearEndgamePause();
         RefreshSilentMode();
         RefreshViews();
+    }
+
+    /// <summary>
+    /// Drop the pause without a repaint — session resets (StartGame /
+    /// Resume / AbandonGame / BeginReplay) where the views may be
+    /// mid-teardown or about to be rewound. Also releases the overlay
+    /// hold, so a Cancel() that ate the reveal can't leave it latched.
+    /// </summary>
+    public void ExitEndgamePause()
+    {
+        if (EndgamePauseActive) Log.Debug(Log.LogCategory.Hud, "[endgame-pause] exit");
+        ClearEndgamePause();
+    }
+
+    private void ClearEndgamePause()
+    {
+        EndgamePauseActive = false;
+        _endgameHintArmed = false;
+        _endgameHintGen++;
+        _hud.SetEndgameContinueHint(false);
+        _hud.SetHudChromeHidden(false);
+        _hud.SetEndgameOverlaysHeld(false);
+    }
+
+    /// <summary>Replay playback holds the endgame overlays for its whole
+    /// run so the recorded mid-game defeat dialogs never re-paint; the
+    /// replayed winner's own pause takes over at the end.</summary>
+    public void HoldEndgameOverlaysForReplay()
+    {
+        Log.Debug(Log.LogCategory.Hud, "[overlay] hold endgame overlays (replay)");
+        _hud.SetEndgameOverlaysHeld(true);
+    }
+
+    /// <summary>Release the replay-wide hold when playback ends without a
+    /// winner (log exhausted or aborted).</summary>
+    public void ReleaseEndgameOverlaysAfterReplay()
+    {
+        Log.Debug(Log.LogCategory.Hud, "[overlay] release endgame overlays (replay ended, no winner)");
+        _hud.SetEndgameOverlaysHeld(false);
     }
 
     /// <summary>
@@ -1955,6 +2107,12 @@ public class GameOperations
                 && (!_recordingMode || defeatedIndex == 0))
             {
                 _session.PendingDefeatScreen = c;
+                // The human's loss cue plays at the moment of elimination;
+                // the defeat overlay itself waits behind the pause. Replay
+                // never pauses mid-game — playback holds every overlay and
+                // only the replayed winner's pause runs.
+                EmitEndgameCue(SoundEffect.Bankruptcy);
+                if (!_isReplayMode()) EnterEndgamePause("defeat");
             }
         }
     }
