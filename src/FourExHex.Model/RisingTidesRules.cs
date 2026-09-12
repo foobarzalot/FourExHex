@@ -171,10 +171,6 @@ public static class RisingTidesRules
             }
             else
             {
-                if (tile.Occupant is Unit drowned && !drowned.Owner.IsNone)
-                {
-                    state.Stats.For(drowned.Owner).UnitsLost++;
-                }
                 state.Grid.Remove(step.Coord);
                 state.AddWater(step.Coord);
                 anySubmerged = true;

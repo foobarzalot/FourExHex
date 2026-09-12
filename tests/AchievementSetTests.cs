@@ -113,12 +113,12 @@ public class AchievementSetTests
     // --- Skill --------------------------------------------------------------
 
     [Fact]
-    public void Untouchable_RequiresAWinWithNoUnitsLost()
+    public void NervosBelli_RequiresAWinWithNoBankruptcyLosses()
     {
-        Assert.Equal(1, Advance(AchievementCatalog.Untouchable, Win()));
-        Assert.Equal(0, Advance(AchievementCatalog.Untouchable,
-            Win() with { WinnerUnitsLost = 1 }));
-        Assert.Equal(0, Advance(AchievementCatalog.Untouchable, Loss()));
+        Assert.Equal(1, Advance(AchievementCatalog.NervosBelli, Win()));
+        Assert.Equal(0, Advance(AchievementCatalog.NervosBelli,
+            Win() with { WinnerUnitsLostToBankruptcy = 1 }));
+        Assert.Equal(0, Advance(AchievementCatalog.NervosBelli, Loss()));
     }
 
     [Fact]

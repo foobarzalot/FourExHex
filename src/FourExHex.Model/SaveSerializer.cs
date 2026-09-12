@@ -268,7 +268,7 @@ public static class SaveSerializer
             (entries ??= new List<RunStatsEntryDto>()).Add(new RunStatsEntryDto
             {
                 Slot = kvp.Key.Index,
-                UnitsLost = kvp.Value.UnitsLost,
+                UnitsLostToBankruptcy = kvp.Value.UnitsLostToBankruptcy,
                 TowersBuilt = kvp.Value.TowersBuilt,
                 VikingKills = kvp.Value.VikingKills,
                 MaxUnitLevelFielded = kvp.Value.MaxUnitLevelFielded,
@@ -288,7 +288,7 @@ public static class SaveSerializer
         {
             if (e.Slot < 0) continue;
             PlayerRunStats p = stats.For(PlayerId.FromIndex(e.Slot));
-            p.UnitsLost = Math.Max(0, e.UnitsLost);
+            p.UnitsLostToBankruptcy = Math.Max(0, e.UnitsLostToBankruptcy);
             p.TowersBuilt = Math.Max(0, e.TowersBuilt);
             p.VikingKills = Math.Max(0, e.VikingKills);
             p.MaxUnitLevelFielded = Math.Max(0, e.MaxUnitLevelFielded);
@@ -1385,7 +1385,7 @@ public sealed class SaveData
 public sealed class RunStatsEntryDto
 {
     public int Slot { get; set; }
-    public int UnitsLost { get; set; }
+    public int UnitsLostToBankruptcy { get; set; }
     public int TowersBuilt { get; set; }
     public int VikingKills { get; set; }
     public int MaxUnitLevelFielded { get; set; }

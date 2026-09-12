@@ -36,8 +36,9 @@ public sealed record GameEndEvent : AchievementEvent
     /// <summary>Grid tiles still on the board — shrinks under Rising Tides.</summary>
     public int LandTilesRemaining { get; init; }
 
-    /// <summary>Units the winning human seat lost this game; 0 when no human won.</summary>
-    public int WinnerUnitsLost { get; init; }
+    /// <summary>Units the winning human seat lost to bankrupt upkeep this
+    /// game; 0 when no human won.</summary>
+    public int WinnerUnitsLostToBankruptcy { get; init; }
 
     /// <summary>Towers the winning human seat built this game; 0 when no human won.</summary>
     public int WinnerTowersBuilt { get; init; }
@@ -126,7 +127,7 @@ public static class AchievementCatalog
     public const string RaidersRepelled = "mode.vikings";
     public const string LastHill = "mode.last_hill";
     public const string VikingSlayer = "mode.viking_slayer";
-    public const string Untouchable = "skill.untouchable";
+    public const string NervosBelli = "skill.nervos_belli";
     public const string OpenField = "skill.open_field";
     public const string Blitz = "skill.blitz";
     public const string ChainOfCommand = "skill.chain_of_command";
@@ -273,13 +274,13 @@ public static class AchievementCatalog
             Advance: e => e is GameEndEvent g ? g.VikingKills : 0),
 
         // --- Skill ---
-        new(Untouchable,
-            StringKeys.AchieveUntouchableTitle,
-            StringKeys.AchieveUntouchableDesc,
+        new(NervosBelli,
+            StringKeys.AchieveNervosBelliTitle,
+            StringKeys.AchieveNervosBelliDesc,
             AchievementCategory.Skill,
             Target: 1,
             Hidden: false,
-            Advance: e => e is GameEndEvent { HumanWon: true, WinnerUnitsLost: 0 } ? 1 : 0),
+            Advance: e => e is GameEndEvent { HumanWon: true, WinnerUnitsLostToBankruptcy: 0 } ? 1 : 0),
         new(OpenField,
             StringKeys.AchieveOpenFieldTitle,
             StringKeys.AchieveOpenFieldDesc,

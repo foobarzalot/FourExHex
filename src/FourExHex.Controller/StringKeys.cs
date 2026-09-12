@@ -391,8 +391,8 @@ public static class StringKeys
     public const string AchieveLastHillDesc = "achieve.last_hill.desc";
     public const string AchieveVikingSlayerTitle = "achieve.viking_slayer.title";
     public const string AchieveVikingSlayerDesc = "achieve.viking_slayer.desc";
-    public const string AchieveUntouchableTitle = "achieve.untouchable.title";
-    public const string AchieveUntouchableDesc = "achieve.untouchable.desc";
+    public const string AchieveNervosBelliTitle = "achieve.nervos_belli.title";
+    public const string AchieveNervosBelliDesc = "achieve.nervos_belli.desc";
     public const string AchieveOpenFieldTitle = "achieve.open_field.title";
     public const string AchieveOpenFieldDesc = "achieve.open_field.desc";
     public const string AchieveBlitzTitle = "achieve.blitz.title";

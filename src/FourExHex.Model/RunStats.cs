@@ -12,9 +12,8 @@ using System.Collections.Generic;
 /// </summary>
 public sealed class PlayerRunStats
 {
-    /// <summary>Units of this player destroyed by any cause: capture,
-    /// bankruptcy disband, tide submerge, viking conquest.</summary>
-    public int UnitsLost { get; set; }
+    /// <summary>Units of this player disbanded by bankrupt upkeep.</summary>
+    public int UnitsLostToBankruptcy { get; set; }
 
     /// <summary>Towers this player built.</summary>
     public int TowersBuilt { get; set; }
@@ -28,11 +27,11 @@ public sealed class PlayerRunStats
     public int MaxUnitLevelFielded { get; set; }
 
     public bool IsZero =>
-        UnitsLost == 0 && TowersBuilt == 0 && VikingKills == 0 && MaxUnitLevelFielded == 0;
+        UnitsLostToBankruptcy == 0 && TowersBuilt == 0 && VikingKills == 0 && MaxUnitLevelFielded == 0;
 
     public PlayerRunStats Copy() => new()
     {
-        UnitsLost = UnitsLost,
+        UnitsLostToBankruptcy = UnitsLostToBankruptcy,
         TowersBuilt = TowersBuilt,
         VikingKills = VikingKills,
         MaxUnitLevelFielded = MaxUnitLevelFielded,

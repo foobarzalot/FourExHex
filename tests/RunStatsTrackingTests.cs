@@ -67,7 +67,7 @@ public class RunStatsTrackingTests
     // --- Units lost ---------------------------------------------------------
 
     [Fact]
-    public void CaptureThatDestroysAUnit_CountsTheVictimsLoss()
+    public void CaptureThatDestroysAUnit_IsNotABankruptcyLoss()
     {
         var g = BuildGame(setup: grid =>
         {
@@ -78,8 +78,9 @@ public class RunStatsTrackingTests
         Click(g, 2);
         Click(g, 3);
 
-        Assert.Equal(1, g.State.Stats.For(Blue).UnitsLost);
-        Assert.Equal(0, g.State.Stats.For(Red).UnitsLost);
+        Assert.Equal(Red, g.State.Grid.Get(HexCoord.FromOffset(3, 0))!.Unit!.Owner);
+        Assert.Equal(0, g.State.Stats.For(Blue).UnitsLostToBankruptcy);
+        Assert.Equal(0, g.State.Stats.For(Red).UnitsLostToBankruptcy);
     }
 
     [Fact]
@@ -95,11 +96,11 @@ public class RunStatsTrackingTests
         bool paid = UpkeepRules.ApplyUpkeepFor(Red, territories, grid, treasury, stats);
 
         Assert.True(paid); // "any bankrupt" convention: true = someone went bankrupt
-        Assert.Equal(2, stats.For(Red).UnitsLost);
+        Assert.Equal(2, stats.For(Red).UnitsLostToBankruptcy);
     }
 
     [Fact]
-    public void TideSubmerge_CountsTheDrownedUnit()
+    public void TideSubmerge_IsNotABankruptcyLoss()
     {
         var redP = new Player("Red", PlayerId.FromIndex(0));
         var blueP = new Player("Blue", PlayerId.FromIndex(1));
@@ -116,7 +117,8 @@ public class RunStatsTrackingTests
         var plan = new[] { new TideStep(HexCoord.FromOffset(1, 0), DemoteOnly: false) };
         RisingTidesRules.ApplyForecast(state, Red, plan);
 
-        Assert.Equal(1, state.Stats.For(Red).UnitsLost);
+        Assert.Null(state.Grid.Get(HexCoord.FromOffset(1, 0)));
+        Assert.Equal(0, state.Stats.For(Red).UnitsLostToBankruptcy);
     }
 
     // --- Towers built -------------------------------------------------------
@@ -188,7 +190,6 @@ public class RunStatsTrackingTests
         Click(g, 3);
 
         Assert.Equal(1, g.State.Stats.For(Red).VikingKills);
-        Assert.Equal(0, g.State.Stats.For(Red).UnitsLost);
     }
 
     [Fact]
@@ -218,18 +219,17 @@ public class RunStatsTrackingTests
         // BeginReplay zeroes the counters at rewind, then playback
         // re-executes the recorded beats — so after an (instant) replay the
         // counters mirror the recorded game rather than accumulating twice.
-        var g = BuildGame(setup: grid =>
-        {
-            grid.Get(HexCoord.FromOffset(2, 0))!.Occupant = new Unit(Red, UnitLevel.Soldier);
-            grid.Get(HexCoord.FromOffset(3, 0))!.Occupant = new Unit(Blue);
-        });
-        Click(g, 2);
-        Click(g, 3);
-        Assert.Equal(1, g.State.Stats.For(Blue).UnitsLost);
+        var g = BuildGame();
+        Click(g, 0);
+        HexCoord capital = g.Session.SelectedTerritory!.Capital!.Value;
+        g.State.Treasury.SetGold(capital, 20);
+        g.Hud.ClickBuildTower();
+        Click(g, 1);
+        Assert.Equal(1, g.State.Stats.For(Red).TowersBuilt);
 
         g.Controller.BeginReplay();
 
-        Assert.Equal(1, g.State.Stats.For(Blue).UnitsLost);
+        Assert.Equal(1, g.State.Stats.For(Red).TowersBuilt);
     }
 
     [Fact]
@@ -243,7 +243,7 @@ public class RunStatsTrackingTests
         IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
         var state = new GameState(grid, territories, players, new TurnState(players), new Treasury());
         PlayerRunStats redStats = state.Stats.For(Red);
-        redStats.UnitsLost = 2;
+        redStats.UnitsLostToBankruptcy = 2;
         redStats.TowersBuilt = 1;
         redStats.VikingKills = 3;
         redStats.MaxUnitLevelFielded = 4;
@@ -251,11 +251,11 @@ public class RunStatsTrackingTests
         string json = SaveSerializer.Serialize(state, 42, players, "s", 100);
         GameState loaded = SaveSerializer.Deserialize(json).State;
 
-        Assert.Equal(2, loaded.Stats.For(Red).UnitsLost);
+        Assert.Equal(2, loaded.Stats.For(Red).UnitsLostToBankruptcy);
         Assert.Equal(1, loaded.Stats.For(Red).TowersBuilt);
         Assert.Equal(3, loaded.Stats.For(Red).VikingKills);
         Assert.Equal(4, loaded.Stats.For(Red).MaxUnitLevelFielded);
-        Assert.Equal(0, loaded.Stats.For(Blue).UnitsLost);
+        Assert.Equal(0, loaded.Stats.For(Blue).UnitsLostToBankruptcy);
     }
 
     [Fact]
@@ -275,6 +275,32 @@ public class RunStatsTrackingTests
 
         Assert.DoesNotContain("RunStats", json);
         GameState loaded = SaveSerializer.Deserialize(json).State;
-        Assert.Equal(0, loaded.Stats.For(Red).UnitsLost);
+        Assert.Equal(0, loaded.Stats.For(Red).UnitsLostToBankruptcy);
+    }
+
+    [Fact]
+    public void SaveWrittenWithTheAllCausesCounter_LoadsAsZeroBankruptcy()
+    {
+        // Older saves carry a "UnitsLost" entry (every cause of death). The
+        // deserializer skips the unmapped member rather than failing, and
+        // the bankruptcy counter starts at zero.
+        var redP = new Player("Red", PlayerId.FromIndex(0));
+        var blueP = new Player("Blue", PlayerId.FromIndex(1));
+        var players = new List<Player> { redP, blueP };
+        HexGrid grid = TestHelpers.BuildRectGrid(3, 1, Blue);
+        grid.Get(HexCoord.FromOffset(0, 0))!.Owner = Red;
+        IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
+        var state = new GameState(grid, territories, players, new TurnState(players), new Treasury());
+        state.Stats.For(Red).UnitsLostToBankruptcy = 3;
+        state.Stats.For(Red).TowersBuilt = 1;
+
+        string json = SaveSerializer.Serialize(state, 42, players, "s", 100)
+            .Replace("UnitsLostToBankruptcy", "UnitsLost");
+        Assert.Contains("\"UnitsLost\"", json);
+
+        GameState loaded = SaveSerializer.Deserialize(json).State;
+
+        Assert.Equal(0, loaded.Stats.For(Red).UnitsLostToBankruptcy);
+        Assert.Equal(1, loaded.Stats.For(Red).TowersBuilt);
     }
 }

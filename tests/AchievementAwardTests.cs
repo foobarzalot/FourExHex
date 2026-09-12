@@ -62,6 +62,61 @@ public class AchievementAwardTests
     }
 
     [Fact]
+    public void HumanWin_WithNoBankruptcyLosses_ReportsNervosBelli()
+    {
+        var store = new FakeAchievementStore();
+        ControllerHarness h = OneMoveFromWinning(store);
+
+        PlayWinningMove(h);
+
+        Assert.Contains((AchievementCatalog.NervosBelli, 1, 1), store.ProgressReports);
+    }
+
+    [Fact]
+    public void HumanWin_AfterABankruptcyLoss_DoesNotReportNervosBelli()
+    {
+        var store = new FakeAchievementStore();
+        ControllerHarness h = OneMoveFromWinning(store);
+        h.State.Stats.For(h.Players[0].Id).UnitsLostToBankruptcy = 1;
+
+        PlayWinningMove(h);
+
+        Assert.Equal(h.Players[0].Id, h.Session.Winner);
+        Assert.DoesNotContain(store.ProgressReports, r => r.Id == AchievementCatalog.NervosBelli);
+    }
+
+    [Fact]
+    public void ResumedSave_WithAnEarlierBankruptcy_DoesNotReportNervosBelliOnWin()
+    {
+        // The bankruptcy happened in a session that was then saved; the
+        // resumed game must still remember it when the win is scored.
+        ControllerHarness before = OneMoveFromWinning(new FakeAchievementStore());
+        before.State.Stats.For(before.Players[0].Id).UnitsLostToBankruptcy = 1;
+        string json = SaveSerializer.Serialize(
+            before.State, 42, before.Players, "slot", int.MaxValue);
+        LoadedSave loaded = SaveSerializer.Deserialize(json);
+
+        var store = new FakeAchievementStore();
+        var session = new SessionState();
+        foreach (Player p in loaded.Players)
+        {
+            session.ClaimVictoryPromptedHighestThreshold[p.Id] = 90;
+        }
+        var map = new MockHexMapView();
+        var hud = new MockHudView();
+        var controller = new GameController(
+            loaded.State, session, map, hud, achievementStore: store);
+        controller.StartGame();
+        var h = new ControllerHarness(loaded.State, session, map, hud, controller, loaded.Players);
+
+        PlayWinningMove(h);
+
+        Assert.Equal(h.Players[0].Id, h.Session.Winner);
+        Assert.Contains((Veteran, 1, 3), store.ProgressReports);
+        Assert.DoesNotContain(store.ProgressReports, r => r.Id == AchievementCatalog.NervosBelli);
+    }
+
+    [Fact]
     public void HumanWin_AwardsExactlyOnce_EvenIfGameEndChecksRunAgain()
     {
         var store = new FakeAchievementStore();

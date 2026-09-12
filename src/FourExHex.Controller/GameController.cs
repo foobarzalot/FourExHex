@@ -672,7 +672,7 @@ public class GameController
             WonByClaim = humanWon && _session.WonByClaim,
             TurnNumber = _state.Turns.TurnNumber,
             LandTilesRemaining = _state.Grid.Count,
-            WinnerUnitsLost = humanWon ? _state.Stats.For(winner!.Id).UnitsLost : 0,
+            WinnerUnitsLostToBankruptcy = humanWon ? _state.Stats.For(winner!.Id).UnitsLostToBankruptcy : 0,
             WinnerTowersBuilt = humanWon ? _state.Stats.For(winner!.Id).TowersBuilt : 0,
             VikingKills = vikingKills,
             MaxHumanUnitLevel = maxHumanLevel,

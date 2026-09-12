@@ -1726,25 +1726,18 @@ public class GameOperations
     /// Observation-only run-stat increments for one executed action. Lives
     /// here (not <c>AiActionCore</c>) so <c>AiSimulator</c> lookahead never
     /// touches the live counters. The neutral seat (vikings, barbarians)
-    /// earns no credit; its victims still count their losses.
+    /// earns no credit.
     /// </summary>
     private void RecordAftermathStats(HexCoord destination, MoveResult result)
     {
-        if (result.Destroyed is Unit dead)
+        if (result.Destroyed is Unit { Owner.IsNone: true }
+            && _state.Mode == GameMode.VikingRaiders
+            && !_state.Turns.IsNeutralSeat)
         {
-            if (!dead.Owner.IsNone)
-            {
-                int lost = ++_state.Stats.For(dead.Owner).UnitsLost;
-                Log.Trace(Log.LogCategory.Achieve,
-                    $"[stats] {dead.Owner} units_lost={lost}");
-            }
-            else if (_state.Mode == GameMode.VikingRaiders && !_state.Turns.IsNeutralSeat)
-            {
-                PlayerId killer = _state.Turns.CurrentPlayer.Id;
-                int kills = ++_state.Stats.For(killer).VikingKills;
-                Log.Trace(Log.LogCategory.Achieve,
-                    $"[stats] {killer} viking_kills={kills}");
-            }
+            PlayerId killer = _state.Turns.CurrentPlayer.Id;
+            int kills = ++_state.Stats.For(killer).VikingKills;
+            Log.Trace(Log.LogCategory.Achieve,
+                $"[stats] {killer} viking_kills={kills}");
         }
 
         if (!_state.Turns.IsNeutralSeat

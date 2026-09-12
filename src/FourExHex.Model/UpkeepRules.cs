@@ -163,14 +163,16 @@ public static class UpkeepRules
                 killed++;
             }
         }
+        int bankruptTotal = -1;
         if (stats != null && killed > 0)
         {
-            stats.For(territory.Owner).UnitsLost += killed;
+            bankruptTotal = stats.For(territory.Owner).UnitsLostToBankruptcy += killed;
         }
         Log.Info(Log.LogCategory.Turn,
             $"[upkeep] BANKRUPT owner={territory.Owner.Index} " +
             $"cap={(territory.HasCapital ? territory.Capital!.Value.ToString() : "none")} " +
             $"size={territory.Coords.Count} units_killed={killed} " +
+            $"bankrupt_total={(bankruptTotal < 0 ? "untracked" : bankruptTotal.ToString())} " +
             $"owed={owed} available={available}");
         return false;
     }
