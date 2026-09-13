@@ -17,6 +17,8 @@ public partial class AchievementToastLayer : CanvasLayer
 {
     private const float BannerW = 560f;
     private const float BannerH = 64f;
+    // Padding above and below wrapped copy when the toast grows past BannerH.
+    private const float BannerVerticalInset = 12f;
     private const float SideMargin = UiMetrics.ViewportMarginPx;
     private const double FadeInSeconds = 0.2;
     private const double FadeOutSeconds = 0.4;
@@ -200,13 +202,33 @@ public partial class AchievementToastLayer : CanvasLayer
         _banner.OffsetLeft = -width * 0.5f;
         _banner.OffsetRight = width * 0.5f;
 
+        // Grow past the design height when the copy wraps (a long title on
+        // a portrait phone runs to two or three lines at the clamped
+        // width). Measured with the label's own font at its wrap width —
+        // the width minus the glyph column and the right inset — with the
+        // break flags mirroring the label's WordSmart autowrap; line_spacing
+        // is the per-line gap GetMultilineStringSize does not include.
+        Font font = _label.GetThemeFont("font");
+        int fontSize = _label.GetThemeFontSize("font_size");
+        float labelWidth = width - (_label.OffsetLeft - _label.OffsetRight);
+        Vector2 textSize = font.GetMultilineStringSize(
+            _label.Text, HorizontalAlignment.Center, labelWidth, fontSize,
+            brkFlags: TextServer.LineBreakFlag.Mandatory
+                | TextServer.LineBreakFlag.WordBound
+                | TextServer.LineBreakFlag.Adaptive);
+        int lines = Mathf.Max(1, Mathf.RoundToInt(textSize.Y / font.GetHeight(fontSize)));
+        float textH = textSize.Y + (lines - 1) * _label.GetThemeConstant("line_spacing");
+        float height = HudPanelMath.FitHeight(textH, BannerVerticalInset, BannerH);
+
         float top = SafeArea.Current.Top + UiMetrics.CornerZoneEdgePadPx;
         _banner.OffsetTop = top;
-        _banner.OffsetBottom = top + BannerH;
+        _banner.OffsetBottom = top + height;
 
         Log.Debug(Log.LogCategory.Achieve,
             $"[banner] placed: safeTop={SafeArea.Current.Top} top={top} " +
             $"width={width} orientation={orientation} " +
             $"viewport={viewport.X}x{viewport.Y}");
+        Log.Debug(Log.LogCategory.Achieve,
+            $"[banner] fit lines={lines} textH={textH:0} height={height:0} labelWidth={labelWidth:0}");
     }
 }
