@@ -29,4 +29,14 @@ public interface IAchievementStore
     /// <summary>Mark the achievement earned and persist it. Idempotent —
     /// an unlock is never revoked.</summary>
     void Unlock(string id);
+
+    /// <summary>Best amount campaign <paramref name="level"/> has contributed
+    /// toward the achievement so far, or 0. Local bookkeeping only — no
+    /// platform mirror needs it.</summary>
+    int CreditFor(string id, int level);
+
+    /// <summary>Record that campaign <paramref name="level"/> has now
+    /// contributed <paramref name="amount"/> toward the achievement and
+    /// persist it. Called only while the amount is rising. Local only.</summary>
+    void ReportCredit(string id, int level, int amount);
 }

@@ -17,8 +17,9 @@ using FourExHex.Model;
 public static class AchievementSerializer
 {
     /// <summary>Bump on any breaking schema change. Unknown (future)
-    /// versions are rejected rather than guessed at.</summary>
-    public const int CurrentFormatVersion = 1;
+    /// versions are rejected rather than guessed at. Version 1 files carry
+    /// no per-level credit and load with empty level attribution.</summary>
+    public const int CurrentFormatVersion = 2;
 
     public static string Serialize(AchievementRecord record)
     {
@@ -61,11 +62,22 @@ public sealed class AchievementData
 /// <summary>
 /// One persisted achievement. <see cref="Order"/> is the 1-based unlock
 /// sequence, 0 meaning "not unlocked"; <see cref="Progress"/> is the best
-/// value ever recorded toward the definition's target.
+/// value ever recorded toward the definition's target;
+/// <see cref="Credits"/> is what each campaign level has contributed
+/// (null when nothing has).
 /// </summary>
 public sealed class AchievementEntryData
 {
     public string? Id { get; set; }
     public int Order { get; set; }
     public int Progress { get; set; }
+    public AchievementLevelCreditData[]? Credits { get; set; }
+}
+
+/// <summary>The best <see cref="Amount"/> one campaign <see cref="Level"/>
+/// has contributed toward an achievement.</summary>
+public sealed class AchievementLevelCreditData
+{
+    public int Level { get; set; }
+    public int Amount { get; set; }
 }

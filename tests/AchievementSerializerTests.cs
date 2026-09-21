@@ -34,7 +34,7 @@ public class AchievementSerializerTests
     {
         string json = AchievementSerializer.Serialize(new AchievementRecord());
 
-        Assert.Contains("\"FormatVersion\": 1", json);
+        Assert.Contains("\"FormatVersion\": 2", json);
     }
 
     [Theory]
@@ -49,7 +49,7 @@ public class AchievementSerializerTests
 
     [Theory]
     [InlineData(0)]
-    [InlineData(2)]
+    [InlineData(3)]
     public void Deserialize_UnsupportedVersion_Throws(int version)
     {
         string json = $"{{ \"FormatVersion\": {version}, \"Entries\": [] }}";
@@ -103,5 +103,63 @@ public class AchievementSerializerTests
         AchievementRecord loaded = AchievementSerializer.Deserialize(json);
 
         Assert.Equal(new[] { "a.ok" }, loaded.UnlockedInOrder);
+    }
+
+    [Fact]
+    public void RoundTrip_PreservesPerLevelCredit()
+    {
+        var record = new AchievementRecord();
+        record.SetCredit("a.counter", 3, 5);
+        record.SetCredit("a.counter", 7, 1);
+        record.SetProgress("a.counter", 6);
+
+        AchievementRecord loaded =
+            AchievementSerializer.Deserialize(AchievementSerializer.Serialize(record));
+
+        Assert.Equal(5, loaded.CreditFor("a.counter", 3));
+        Assert.Equal(1, loaded.CreditFor("a.counter", 7));
+        Assert.Equal(6, loaded.ProgressFor("a.counter"));
+    }
+
+    [Fact]
+    public void Deserialize_VersionOneFile_LoadsWithEmptyLevelAttribution()
+    {
+        // A record written before per-level credit existed: unlocks and
+        // progress stay, but no level has contributed anything yet.
+        string json = """
+            {
+              "FormatVersion": 1,
+              "Entries": [
+                { "Id": "a.first", "Order": 1, "Progress": 1 },
+                { "Id": "a.counter", "Order": 0, "Progress": 2 }
+              ]
+            }
+            """;
+
+        AchievementRecord loaded = AchievementSerializer.Deserialize(json);
+
+        Assert.True(loaded.IsUnlocked("a.first"));
+        Assert.Equal(2, loaded.ProgressFor("a.counter"));
+        Assert.Equal(0, loaded.CreditFor("a.counter", 0));
+        Assert.Null(Assert.Single(loaded.ToEntries().Where(e => e.Id == "a.counter")).Credits);
+    }
+
+    [Fact]
+    public void Deserialize_DamagedCredits_DegradeGracefully()
+    {
+        string json = """
+            {
+              "FormatVersion": 2,
+              "Entries": [
+                { "Id": "a.counter", "Progress": 2,
+                  "Credits": [ { "Level": -3, "Amount": 1 }, null, { "Level": 4, "Amount": 2 } ] }
+              ]
+            }
+            """;
+
+        AchievementRecord loaded = AchievementSerializer.Deserialize(json);
+
+        Assert.Equal(2, loaded.CreditFor("a.counter", 4));
+        Assert.Single(loaded.ToEntries()[0].Credits!);
     }
 }

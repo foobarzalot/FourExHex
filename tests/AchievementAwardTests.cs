@@ -24,7 +24,8 @@ public class AchievementAwardTests
         IAchievementStore store,
         bool firstPlayerIsAi = false,
         bool previewMode = false,
-        bool recordingMode = false)
+        bool recordingMode = false,
+        int? campaignLevel = 0)
     {
         var red = new Player("Red", PlayerId.FromIndex(0), isAi: firstPlayerIsAi);
         var blue = new Player("Blue", PlayerId.FromIndex(1), isAi: true);
@@ -38,7 +39,8 @@ public class AchievementAwardTests
             recordingMode: recordingMode,
             beforeTerritories: grid =>
                 grid.Get(HexCoord.FromOffset(3, 0))!.Occupant = new Unit(red.Id),
-            achievementStore: store);
+            achievementStore: store,
+            campaignLevel: campaignLevel);
     }
 
     private static void PlayWinningMove(ControllerHarness h)
@@ -105,7 +107,7 @@ public class AchievementAwardTests
         var map = new MockHexMapView();
         var hud = new MockHudView();
         var controller = new GameController(
-            loaded.State, session, map, hud, achievementStore: store);
+            loaded.State, session, map, hud, achievementStore: store, campaignLevel: 0);
         controller.StartGame();
         var h = new ControllerHarness(loaded.State, session, map, hud, controller, loaded.Players);
 
@@ -182,7 +184,8 @@ public class AchievementAwardTests
                     new Unit(red.Id, UnitLevel.Captain);
                 grid.Get(HexCoord.FromOffset(2, 0))!.Occupant = new Unit(red.Id);
             },
-            achievementStore: store);
+            achievementStore: store,
+            campaignLevel: 0);
 
         h.Map.SimulateClick(h.State.Grid.Get(HexCoord.FromOffset(2, 0)));
         h.Map.SimulateClick(h.State.Grid.Get(HexCoord.FromOffset(1, 0))); // Commander
@@ -249,6 +252,48 @@ public class AchievementAwardTests
         h.Controller.BeginReplay();
 
         Assert.Equal(0, store.TotalCalls);
+    }
+
+    // --- Campaign-only, once per level ---
+
+    [Fact]
+    public void FreeformGame_AwardsNothing()
+    {
+        var store = new FakeAchievementStore();
+        ControllerHarness h = OneMoveFromWinning(store, campaignLevel: null);
+
+        PlayWinningMove(h);
+
+        Assert.Equal(h.Players[0].Id, h.Session.Winner);
+        Assert.Equal(0, store.TotalCalls);
+        Assert.Empty(h.Hud.AchievementBanners);
+    }
+
+    [Fact]
+    public void CampaignWin_CreditsTheLevelItWasPlayedOn()
+    {
+        var store = new FakeAchievementStore();
+        ControllerHarness h = OneMoveFromWinning(store, campaignLevel: 7);
+
+        PlayWinningMove(h);
+
+        Assert.Contains((Veteran, 1, 3), store.ProgressReports);
+        Assert.Contains((Veteran, 7, 1), store.Credits);
+    }
+
+    [Fact]
+    public void ReWinningTheSameLevel_AddsNothing_ButAnotherLevelDoes()
+    {
+        var store = new FakeAchievementStore();
+        PlayWinningMove(OneMoveFromWinning(store, campaignLevel: 7));
+        store.ClearCallLog();
+
+        PlayWinningMove(OneMoveFromWinning(store, campaignLevel: 7));
+        Assert.Equal(0, store.TotalCalls);
+        Assert.Equal(1, store.ProgressFor(Veteran));
+
+        PlayWinningMove(OneMoveFromWinning(store, campaignLevel: 8));
+        Assert.Equal(2, store.ProgressFor(Veteran));
     }
 
     // --- The campaign seam ---

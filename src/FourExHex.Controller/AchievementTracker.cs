@@ -12,6 +12,14 @@ using System.Collections.Generic;
 ///
 /// Already-unlocked achievements are skipped entirely, so a store that has
 /// earned everything sees no writes at all.
+///
+/// Every event names the campaign level it came from, and a level
+/// contributes at most its <em>best</em> single-run amount to each
+/// achievement: the store remembers what the level has already credited,
+/// and only an improvement on that is added to progress. For a boolean
+/// row that means once per level; for a per-game counter (Viking Slayer)
+/// a replayed level can add only the margin by which it beat its earlier
+/// run, so grinding one level cannot farm a counter.
 /// </summary>
 public sealed class AchievementTracker
 {
@@ -37,7 +45,18 @@ public sealed class AchievementTracker
             int delta = def.Advance(evt);
             if (delta <= 0) continue;
 
-            int current = Math.Min(_store.ProgressFor(def.Id) + delta, def.Target);
+            int prior = _store.CreditFor(def.Id, evt.Level);
+            if (delta <= prior)
+            {
+                Log.Debug(Log.LogCategory.Achieve,
+                    $"[award] {def.Id} level {evt.Level} already credited {prior} — skipped");
+                continue;
+            }
+            _store.ReportCredit(def.Id, evt.Level, delta);
+            Log.Debug(Log.LogCategory.Achieve,
+                $"[award] credit {def.Id} level {evt.Level} {prior}→{delta}");
+
+            int current = Math.Min(_store.ProgressFor(def.Id) + (delta - prior), def.Target);
             _store.ReportProgress(def.Id, current, def.Target);
             Log.Debug(Log.LogCategory.Achieve,
                 $"[award] progress {def.Id} {current}/{def.Target}");

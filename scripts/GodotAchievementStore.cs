@@ -22,4 +22,9 @@ public sealed class GodotAchievementStore : IAchievementStore
         AchievementStore.SetProgress(id, current);
 
     public void Unlock(string id) => AchievementStore.Unlock(id);
+
+    public int CreditFor(string id, int level) => AchievementStore.Record.CreditFor(id, level);
+
+    public void ReportCredit(string id, int level, int amount) =>
+        AchievementStore.SetCredit(id, level, amount);
 }

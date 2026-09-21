@@ -18,6 +18,9 @@ using System.Collections.Generic;
 /// read is re-emitted on save, so a build that knows fewer achievements
 /// can never destroy a record written by one that knows more. The catalog
 /// is consulted for display only.</item>
+/// <item>Per-level <b>credit</b> only rises. Each entry remembers the best
+/// amount every campaign level has contributed to it, so a level replayed
+/// to the same or a worse result contributes nothing more.</item>
 /// </list>
 /// </summary>
 public sealed class AchievementRecord
@@ -30,6 +33,10 @@ public sealed class AchievementRecord
         public int Order { get; set; }
 
         public int Progress { get; set; }
+
+        /// <summary>Campaign level → best amount that level has contributed.
+        /// Sorted so the on-disk order is deterministic.</summary>
+        public SortedDictionary<int, int> Credits { get; } = new();
     }
 
     /// <summary>Insertion order, which is also the on-disk order.</summary>
@@ -49,9 +56,10 @@ public sealed class AchievementRecord
     /// Tolerant by design — a damaged file costs at worst some re-earnable
     /// progress, never a crash: a null list is an empty record, blank ids
     /// are skipped, negative values clamp to zero, and duplicate ids
-    /// collapse (progress takes the max, order the lower non-zero). Unlock
-    /// order is renumbered from 1 so a hand-edited or half-written file
-    /// recovers a sane sequence.
+    /// collapse (progress takes the max, order the lower non-zero, credit
+    /// the max per level). A credit with a negative level or a non-positive
+    /// amount is dropped. Unlock order is renumbered from 1 so a
+    /// hand-edited or half-written file recovers a sane sequence.
     /// </summary>
     public static AchievementRecord FromEntries(
         IReadOnlyList<AchievementEntryData>? entries,
@@ -71,16 +79,18 @@ public sealed class AchievementRecord
             int order = Math.Max(0, data.Order);
             int progress = Math.Max(0, data.Progress);
 
-            if (record._byId.TryGetValue(id, out Entry? existing))
+            if (!record._byId.TryGetValue(id, out Entry? entry))
             {
-                existing.Progress = Math.Max(existing.Progress, progress);
-                existing.Order = LowerNonZero(existing.Order, order);
-                continue;
+                entry = new Entry { Id = id, Order = order, Progress = progress };
+                record._entries.Add(entry);
+                record._byId[id] = entry;
             }
-
-            var entry = new Entry { Id = id, Order = order, Progress = progress };
-            record._entries.Add(entry);
-            record._byId[id] = entry;
+            else
+            {
+                entry.Progress = Math.Max(entry.Progress, progress);
+                entry.Order = LowerNonZero(entry.Order, order);
+            }
+            MergeCredits(entry, data.Credits);
         }
 
         record.RenumberUnlocks();
@@ -147,9 +157,60 @@ public sealed class AchievementRecord
                 Id = _entries[i].Id,
                 Order = _entries[i].Order,
                 Progress = _entries[i].Progress,
+                Credits = CreditsToData(_entries[i].Credits),
             };
         }
         return data;
+    }
+
+    /// <summary>Null when the entry has no credit, so a credit-free entry
+    /// keeps the compact three-field shape on disk.</summary>
+    private static AchievementLevelCreditData[]? CreditsToData(SortedDictionary<int, int> credits)
+    {
+        if (credits.Count == 0) return null;
+        var data = new AchievementLevelCreditData[credits.Count];
+        int i = 0;
+        foreach (KeyValuePair<int, int> pair in credits)
+        {
+            data[i++] = new AchievementLevelCreditData { Level = pair.Key, Amount = pair.Value };
+        }
+        return data;
+    }
+
+    /// <summary>Fold persisted credits into <paramref name="entry"/>, max
+    /// per level; a null list, a null slot, a negative level, or a
+    /// non-positive amount is readable damage and is skipped.</summary>
+    private static void MergeCredits(Entry entry, AchievementLevelCreditData[]? credits)
+    {
+        if (credits == null) return;
+        foreach (AchievementLevelCreditData? credit in credits)
+        {
+            if (credit == null || credit.Level < 0 || credit.Amount <= 0) continue;
+            if (entry.Credits.TryGetValue(credit.Level, out int existing) && existing >= credit.Amount)
+            {
+                continue;
+            }
+            entry.Credits[credit.Level] = credit.Amount;
+        }
+    }
+
+    /// <summary>Best amount campaign <paramref name="level"/> has ever
+    /// contributed toward <paramref name="id"/>, or 0.</summary>
+    public int CreditFor(string id, int level) =>
+        _byId.TryGetValue(id, out Entry? entry)
+            && entry.Credits.TryGetValue(level, out int amount)
+            ? amount
+            : 0;
+
+    /// <summary>Raise the amount campaign <paramref name="level"/> has
+    /// contributed toward <paramref name="id"/>. Returns true iff this
+    /// changed anything (caller saves); a value at or below the stored best
+    /// is ignored so credit never regresses.</summary>
+    public bool SetCredit(string id, int level, int amount)
+    {
+        if (amount <= CreditFor(id, level)) return false;
+        GetOrAdd(id).Credits[level] = amount;
+        return true;
     }
 
     private Entry GetOrAdd(string id)

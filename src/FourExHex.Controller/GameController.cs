@@ -112,9 +112,11 @@ public class GameController
         bool autoSelectFirstTerritory = true,
         Func<GameState, PlayerId, HashSet<HexCoord>, HashSet<HexCoord>, DeterministicRng, AiAction?>? automateChooser = null,
         Func<bool>? automateIsInstantMode = null,
-        IAchievementStore? achievementStore = null)
+        IAchievementStore? achievementStore = null,
+        int? campaignLevel = null)
     {
         _achievements = new AchievementTracker(achievementStore ?? NullAchievementStore.Instance);
+        _campaignLevel = campaignLevel;
         _autoSelectFirstTerritory = autoSelectFirstTerritory;
         // Both chooser tracks run through AiActionLowering: it owns the
         // AI's per-turn decision state (make-way tower lowering + the
@@ -604,6 +606,11 @@ public class GameController
 
     private readonly AchievementTracker _achievements;
 
+    /// <summary>The campaign level this game is played as, or null for
+    /// every other kind of game (freeform, starting map, diagnostic,
+    /// tutorial preview / builder). Only campaign games award.</summary>
+    private readonly int? _campaignLevel;
+
     /// <summary>One-shot per game. The latch, not just
     /// <see cref="IsReplayMode"/>, is what makes re-awarding impossible:
     /// <c>BeginReplay</c> clears <c>GameEndedFired</c> and
@@ -620,12 +627,20 @@ public class GameController
     /// <item><c>_previewMode</c> — Tutorial Preview replays authored beats.</item>
     /// <item><c>_recordingMode</c> — Tutorial Builder forces an all-human
     /// roster, so the winner-is-human test alone would not exclude it.</item>
+    /// <item><c>_campaignLevel</c> — only campaign games award; freeform
+    /// and starting-map games would otherwise let every counter be
+    /// ground up by replaying the same easy setup.</item>
     /// </list>
     /// Diagnostic runs need no clause here: <c>Main</c> only constructs the
     /// real store outside diagnostic mode, so those sessions hold a
     /// <see cref="NullAchievementStore"/> and cannot write at all.
     /// </summary>
-    private bool AwardsEnabled => !IsReplayMode && !_previewMode && !_recordingMode;
+    private bool AwardsEnabled =>
+        !IsReplayMode && !_previewMode && !_recordingMode && _campaignLevel is int;
+
+    private string AwardGateSummary =>
+        $"replay={IsReplayMode} preview={_previewMode} recording={_recordingMode} " +
+        $"campaign={(_campaignLevel is int lvl ? lvl.ToString() : "none")}";
 
     /// <summary>
     /// Game-end funnel. Awards before raising <see cref="GameEnded"/> so
@@ -640,20 +655,20 @@ public class GameController
 
     /// <summary>
     /// Raise the single <see cref="GameEndEvent"/> for this game — on every
-    /// untainted ending, not just human wins, so mechanic-milestone
+    /// untainted campaign ending, not just human wins, so mechanic-milestone
     /// achievements can advance from a loss. A stasis end (turn cap) and a
     /// <see cref="PlayerId.None"/> winner (Viking total wipeout) are both
     /// "nobody won" (<c>HumanWon</c> false). Any human seat's win counts —
-    /// the record belongs to the device, not to a seat.
+    /// the record belongs to the device, not to a seat. The event carries
+    /// the campaign level so the tracker can hold each level to its best
+    /// single contribution.
     /// </summary>
     private void AwardEndOfGameAchievements()
     {
         if (_awardedAchievementsThisGame) return;
         if (!AwardsEnabled)
         {
-            Log.Debug(Log.LogCategory.Achieve,
-                $"[award] skipped (replay={IsReplayMode} preview={_previewMode} " +
-                $"recording={_recordingMode})");
+            Log.Debug(Log.LogCategory.Achieve, $"[award] skipped ({AwardGateSummary})");
             return;
         }
 
@@ -677,7 +692,7 @@ public class GameController
             }
         }
 
-        var facts = new GameEndEvent
+        var facts = new GameEndEvent(_campaignLevel!.Value)
         {
             HumanWon = humanWon,
             Mode = _state.Mode,
@@ -709,8 +724,7 @@ public class GameController
         if (!AwardsEnabled)
         {
             Log.Debug(Log.LogCategory.Achieve,
-                $"[award] campaign raise skipped (replay={IsReplayMode} " +
-                $"preview={_previewMode} recording={_recordingMode})");
+                $"[award] campaign raise skipped ({AwardGateSummary})");
             return;
         }
         Log.Debug(Log.LogCategory.Achieve, $"[award] facts {evt}");

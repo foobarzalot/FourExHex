@@ -30,4 +30,10 @@ public sealed class NullAchievementStore : IAchievementStore
     public void Unlock(string id)
     {
     }
+
+    public int CreditFor(string id, int level) => 0;
+
+    public void ReportCredit(string id, int level, int amount)
+    {
+    }
 }

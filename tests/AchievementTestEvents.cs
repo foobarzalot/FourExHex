@@ -7,11 +7,11 @@ namespace FourExHex.Tests;
 /// tests override just the facts they exercise via <c>with</c>.</summary>
 public static class AchievementTestEvents
 {
-    /// <summary>A plain freeform human win with all other facts at their
-    /// defaults.</summary>
-    public static GameEndEvent HumanWin() => new() { HumanWon = true };
+    /// <summary>A plain human win on campaign <paramref name="level"/>
+    /// with all other facts at their defaults.</summary>
+    public static GameEndEvent HumanWin(int level = 0) => new(level) { HumanWon = true };
 
-    /// <summary>A game that ended without a human victory (AI win, stasis,
-    /// or viking wipeout).</summary>
-    public static GameEndEvent HumanLoss() => new() { HumanWon = false };
+    /// <summary>A game on campaign <paramref name="level"/> that ended
+    /// without a human victory (AI win, stasis, or viking wipeout).</summary>
+    public static GameEndEvent HumanLoss(int level = 0) => new(level) { HumanWon = false };
 }

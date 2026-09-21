@@ -494,6 +494,9 @@ public partial class Main : Node2D
         // Achievements are recorded for real play only. A diagnostic run
         // gets no store at all, so it cannot write achievement state even
         // by accident — the controller falls back to NullAchievementStore.
+        // The campaign level is what lets the controller award at all
+        // (freeform and starting-map games stay silent) and what the
+        // record credits the game's contribution to.
         IAchievementStore? achievementStore =
             diagnosticMode ? null : new GodotAchievementStore();
         _controller = new GameController(
@@ -501,6 +504,7 @@ public partial class Main : Node2D
             seed: seed,
             aiPacer: pacer,
             achievementStore: achievementStore,
+            campaignLevel: _campaignLevel,
             aiChooser: AiDispatcher.ChooseForCurrentPlayer,
             maxTurnNumber: _maxTurnNumber,
             loadedReplay: loadedReplay,

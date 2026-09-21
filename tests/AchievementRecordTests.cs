@@ -200,6 +200,145 @@ public class AchievementRecordTests
             .Select(e => e.Order));
     }
 
+    // --- Per-level credit: what each campaign level has contributed ---
+
+    [Fact]
+    public void CreditFor_UnknownIdOrLevel_IsZero()
+    {
+        var record = new AchievementRecord();
+        record.SetCredit("a.counter", 3, 2);
+
+        Assert.Equal(0, record.CreditFor("a.nope", 3));
+        Assert.Equal(0, record.CreditFor("a.counter", 4));
+    }
+
+    [Fact]
+    public void SetCredit_RaisesValueAndReturnsTrue()
+    {
+        var record = new AchievementRecord();
+
+        Assert.True(record.SetCredit("a.counter", 3, 2));
+        Assert.Equal(2, record.CreditFor("a.counter", 3));
+        Assert.True(record.SetCredit("a.counter", 3, 5));
+        Assert.Equal(5, record.CreditFor("a.counter", 3));
+    }
+
+    [Fact]
+    public void SetCredit_EqualOrLowerValue_ReturnsFalseAndKeepsBest()
+    {
+        var record = new AchievementRecord();
+        record.SetCredit("a.counter", 3, 5);
+
+        Assert.False(record.SetCredit("a.counter", 3, 5));
+        Assert.False(record.SetCredit("a.counter", 3, 1));
+        Assert.Equal(5, record.CreditFor("a.counter", 3));
+    }
+
+    [Fact]
+    public void SetCredit_IsPerLevel()
+    {
+        var record = new AchievementRecord();
+        record.SetCredit("a.counter", 3, 5);
+
+        Assert.True(record.SetCredit("a.counter", 7, 1));
+        Assert.Equal(5, record.CreditFor("a.counter", 3));
+        Assert.Equal(1, record.CreditFor("a.counter", 7));
+    }
+
+    [Fact]
+    public void ToEntries_RoundTripsCredits_AndOmitsThemWhenEmpty()
+    {
+        var record = new AchievementRecord();
+        record.SetCredit("a.counter", 7, 1);
+        record.SetCredit("a.counter", 3, 5);
+        record.Unlock("a.one");
+
+        AchievementEntryData[] entries = record.ToEntries();
+        AchievementEntryData counter = Assert.Single(entries.Where(e => e.Id == "a.counter"));
+        Assert.Equal(new[] { (3, 5), (7, 1) },
+            counter.Credits!.Select(c => (c.Level, c.Amount)));
+        Assert.Null(Assert.Single(entries.Where(e => e.Id == "a.one")).Credits);
+
+        AchievementRecord loaded = AchievementRecord.FromEntries(entries, NoRenames);
+        Assert.Equal(5, loaded.CreditFor("a.counter", 3));
+        Assert.Equal(1, loaded.CreditFor("a.counter", 7));
+    }
+
+    [Fact]
+    public void FromEntries_UnknownIdCredits_ArePreservedAndReEmitted()
+    {
+        AchievementEntryData[] fromFuture =
+        {
+            new AchievementEntryData
+            {
+                Id = "future.unknown",
+                Credits = new[] { new AchievementLevelCreditData { Level = 9, Amount = 4 } },
+            },
+        };
+
+        AchievementRecord loaded = AchievementRecord.FromEntries(fromFuture, NoRenames);
+        AchievementLevelCreditData credit = Assert.Single(loaded.ToEntries()[0].Credits!);
+
+        Assert.Equal((9, 4), (credit.Level, credit.Amount));
+    }
+
+    [Fact]
+    public void FromEntries_DamagedCredits_AreDroppedNotThrown()
+    {
+        // Negative level, zero or negative amount, and a null slot in the
+        // list are all readable damage — skip them, keep the rest.
+        AchievementEntryData[] damaged =
+        {
+            new AchievementEntryData
+            {
+                Id = "a.counter",
+                Credits = new AchievementLevelCreditData?[]
+                {
+                    new() { Level = -1, Amount = 3 },
+                    new() { Level = 2, Amount = 0 },
+                    new() { Level = 3, Amount = -4 },
+                    null,
+                    new() { Level = 4, Amount = 2 },
+                }!,
+            },
+        };
+
+        AchievementRecord loaded = AchievementRecord.FromEntries(damaged, NoRenames);
+
+        Assert.Equal(0, loaded.CreditFor("a.counter", -1));
+        Assert.Equal(0, loaded.CreditFor("a.counter", 2));
+        Assert.Equal(0, loaded.CreditFor("a.counter", 3));
+        Assert.Equal(2, loaded.CreditFor("a.counter", 4));
+        Assert.Single(loaded.ToEntries()[0].Credits!);
+    }
+
+    [Fact]
+    public void FromEntries_DuplicateCredits_TakeTheMax()
+    {
+        // Same level twice within an entry, and again on a duplicate id.
+        AchievementEntryData[] entries =
+        {
+            new AchievementEntryData
+            {
+                Id = "a.counter",
+                Credits = new[]
+                {
+                    new AchievementLevelCreditData { Level = 3, Amount = 2 },
+                    new AchievementLevelCreditData { Level = 3, Amount = 6 },
+                },
+            },
+            new AchievementEntryData
+            {
+                Id = "a.counter",
+                Credits = new[] { new AchievementLevelCreditData { Level = 3, Amount = 4 } },
+            },
+        };
+
+        AchievementRecord loaded = AchievementRecord.FromEntries(entries, NoRenames);
+
+        Assert.Equal(6, loaded.CreditFor("a.counter", 3));
+    }
+
     // --- Renames: ids stay changeable until first-party registration ---
 
     [Fact]

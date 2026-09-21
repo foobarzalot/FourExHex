@@ -8,7 +8,7 @@ using System.Collections.Generic;
 /// human path; the facts it carries are what catalog predicates match
 /// on, so adding an achievement never adds a new raise site unless it
 /// needs a genuinely new observation.</summary>
-public abstract record AchievementEvent;
+public abstract record AchievementEvent(int Level);
 
 /// <summary>
 /// The end of an untainted game — raised exactly once per game whether
@@ -18,6 +18,10 @@ public abstract record AchievementEvent;
 /// </summary>
 public sealed record GameEndEvent : AchievementEvent
 {
+    public GameEndEvent(int level) : base(level)
+    {
+    }
+
     /// <summary>True when the winner resolved to a human seat.</summary>
     public bool HumanWon { get; init; }
 
@@ -61,7 +65,7 @@ public sealed record CampaignLevelWonEvent(
     int Level,
     int WonCount,
     int TierIndex,
-    int TierWonCount) : AchievementEvent;
+    int TierWonCount) : AchievementEvent(Level);
 
 /// <summary>Grouping for the achievements panel, in display order.</summary>
 public enum AchievementCategory

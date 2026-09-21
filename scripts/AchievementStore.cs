@@ -56,6 +56,16 @@ public static class AchievementStore
         Save();
     }
 
+    /// <summary>Raise what a campaign level has contributed toward an
+    /// achievement and persist if anything changed.</summary>
+    public static void SetCredit(string id, int level, int amount)
+    {
+        EnsureLoaded();
+        if (!_record!.SetCredit(id, level, amount)) return;
+        Log.Debug(Log.LogCategory.Achieve, $"[store] credit {id} level {level} = {amount}");
+        Save();
+    }
+
     /// <summary>Clear every unlock and all progress, then persist the empty
     /// record. Debug tooling (the cheat menu) so achievement-award and toast
     /// behaviour can be re-tested without a fresh install; writing an empty
@@ -86,8 +96,14 @@ public static class AchievementStore
             using FileAccess f = FileAccess.Open(AchievementPath, FileAccess.ModeFlags.Read);
             if (f == null) return;
             _record = AchievementSerializer.Deserialize(f.GetAsText());
+            int credited = 0;
+            foreach (AchievementEntryData entry in _record.ToEntries())
+            {
+                if (entry.Credits != null) credited++;
+            }
             Log.Info(Log.LogCategory.Achieve,
-                $"[store] loaded — {_record.UnlockedInOrder.Count} unlocked");
+                $"[store] loaded — {_record.UnlockedInOrder.Count} unlocked, " +
+                $"{credited} with level credit");
         }
         catch (System.Exception ex)
         {

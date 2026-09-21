@@ -38,12 +38,13 @@ public class AchievementTrackerTests
     [Fact]
     public void ThirdWin_UnlocksAndReturnsTheId()
     {
+        // Three wins on three different levels — one level counts once.
         var store = new FakeAchievementStore();
         var tracker = new AchievementTracker(store);
-        tracker.OnEvent(AchievementTestEvents.HumanWin());
-        tracker.OnEvent(AchievementTestEvents.HumanWin());
+        tracker.OnEvent(AchievementTestEvents.HumanWin(level: 0));
+        tracker.OnEvent(AchievementTestEvents.HumanWin(level: 1));
 
-        IReadOnlyList<string> unlocked = tracker.OnEvent(AchievementTestEvents.HumanWin());
+        IReadOnlyList<string> unlocked = tracker.OnEvent(AchievementTestEvents.HumanWin(level: 2));
 
         Assert.Contains(Veteran, unlocked);
         Assert.Contains(Veteran, store.Unlocks);
@@ -56,10 +57,10 @@ public class AchievementTrackerTests
     {
         var store = new FakeAchievementStore();
         var tracker = new AchievementTracker(store);
-        for (int i = 0; i < 3; i++) tracker.OnEvent(AchievementTestEvents.HumanWin());
+        for (int i = 0; i < 3; i++) tracker.OnEvent(AchievementTestEvents.HumanWin(level: i));
         store.ClearCallLog();
 
-        IReadOnlyList<string> unlocked = tracker.OnEvent(AchievementTestEvents.HumanWin());
+        IReadOnlyList<string> unlocked = tracker.OnEvent(AchievementTestEvents.HumanWin(level: 3));
 
         Assert.DoesNotContain(Veteran, unlocked);
         Assert.Empty(VeteranReports(store));
@@ -71,7 +72,7 @@ public class AchievementTrackerTests
         var store = new FakeAchievementStore();
         var tracker = new AchievementTracker(store);
 
-        for (int i = 0; i < 5; i++) tracker.OnEvent(AchievementTestEvents.HumanWin());
+        for (int i = 0; i < 5; i++) tracker.OnEvent(AchievementTestEvents.HumanWin(level: i));
 
         foreach ((string _, int current, int target) in store.ProgressReports)
         {
@@ -94,5 +95,83 @@ public class AchievementTrackerTests
 
         Assert.Empty(tracker.OnEvent(AchievementTestEvents.HumanWin()));
         Assert.Equal(0, store.TotalCalls);
+    }
+
+    // --- Per-level credit: a campaign level contributes its best run once ---
+
+    [Fact]
+    public void SameLevelTwice_SecondWinAddsNothing()
+    {
+        var store = new FakeAchievementStore();
+        var tracker = new AchievementTracker(store);
+        tracker.OnEvent(AchievementTestEvents.HumanWin(level: 5));
+        store.ClearCallLog();
+
+        tracker.OnEvent(AchievementTestEvents.HumanWin(level: 5));
+
+        Assert.Equal(0, store.TotalCalls);
+        Assert.Equal(1, store.ProgressFor(Veteran));
+    }
+
+    [Fact]
+    public void DifferentLevel_AdvancesAndCreditsThatLevel()
+    {
+        var store = new FakeAchievementStore();
+        var tracker = new AchievementTracker(store);
+        tracker.OnEvent(AchievementTestEvents.HumanWin(level: 5));
+
+        tracker.OnEvent(AchievementTestEvents.HumanWin(level: 6));
+
+        Assert.Equal(new[] { (Veteran, 1, 3), (Veteran, 2, 3) }, VeteranReports(store));
+        Assert.Contains((Veteran, 5, 1), store.Credits);
+        Assert.Contains((Veteran, 6, 1), store.Credits);
+    }
+
+    [Fact]
+    public void VikingSlayer_ALevelContributesItsBestRun_OnlyTheImprovementIsAdded()
+    {
+        const string slayer = AchievementCatalog.VikingSlayer;
+        var store = new FakeAchievementStore();
+        var tracker = new AchievementTracker(store);
+
+        tracker.OnEvent(AchievementTestEvents.HumanLoss(level: 9) with { VikingKills = 5 });
+        Assert.Equal(5, store.ProgressFor(slayer));
+
+        tracker.OnEvent(AchievementTestEvents.HumanWin(level: 9) with { VikingKills = 3 });
+        Assert.Equal(5, store.ProgressFor(slayer));
+        Assert.Equal(5, store.CreditFor(slayer, 9));
+
+        tracker.OnEvent(AchievementTestEvents.HumanWin(level: 9) with { VikingKills = 8 });
+        Assert.Equal(8, store.ProgressFor(slayer));
+        Assert.Equal(8, store.CreditFor(slayer, 9));
+        Assert.Equal((slayer, 8, 50), store.ProgressReports.Last(r => r.Id == slayer));
+    }
+
+    [Fact]
+    public void Credit_SurvivesARestart_SoTheReloadedRecordStillSkips()
+    {
+        var before = new FakeAchievementStore();
+        new AchievementTracker(before).OnEvent(AchievementTestEvents.HumanWin(level: 5));
+        AchievementRecord reloaded = AchievementSerializer.Deserialize(
+            AchievementSerializer.Serialize(before.Record));
+
+        var after = new FakeAchievementStore(reloaded);
+        new AchievementTracker(after).OnEvent(AchievementTestEvents.HumanWin(level: 5));
+
+        Assert.Equal(0, after.TotalCalls);
+        Assert.Equal(1, after.ProgressFor(Veteran));
+    }
+
+    [Fact]
+    public void AlreadyUnlockedRow_RecordsNoCredit()
+    {
+        var store = new FakeAchievementStore();
+        store.Unlock(Veteran);
+        store.ClearCallLog();
+        var tracker = new AchievementTracker(store);
+
+        tracker.OnEvent(AchievementTestEvents.HumanWin(level: 5));
+
+        Assert.DoesNotContain(store.Credits, c => c.Id == Veteran);
     }
 }
