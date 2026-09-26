@@ -12,4 +12,11 @@
 public static class LoadRequest
 {
     public static LoadedSave? Pending { get; set; }
+
+    /// <summary>
+    /// Set alongside <see cref="Pending"/> to open the loaded save in replay
+    /// playback instead of resuming it (the campaign sheet's Watch Replay).
+    /// <c>Main</c> reads and clears it with <see cref="Pending"/>.
+    /// </summary>
+    public static bool WatchReplay { get; set; }
 }

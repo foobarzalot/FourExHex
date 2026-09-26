@@ -18,12 +18,24 @@ using Godot;
 /// Writes happen immediately on every status transition (level launch,
 /// game end) — never "on app exit" — so a crash or force-quit can't
 /// lose a result.
+///
+/// Also owns the per-level <b>attempt</b> lifecycle: each level's most
+/// recent game lives as a gzipped save in
+/// <see cref="SaveStore.CampaignAttemptsDirectory"/> (see
+/// <see cref="CampaignAttempts"/>), with a recency index sidecar at
+/// <c>user://campaign_attempts.json</c> that the landing Resume pick reads
+/// so it never has to inflate every attempt file. The attempt file is the
+/// authority whenever a level is opened; the index is a cache that is
+/// rebuilt from the files when missing or unreadable.
 /// </summary>
 public static class CampaignStore
 {
     private const string CampaignPath = "user://campaign.json";
+    private const string AttemptIndexPath = "user://campaign_attempts.json";
 
     private static CampaignProgress? _progress;
+    private static CampaignAttemptIndex? _attempts;
+    private static readonly SaveStore Saves = new();
 
     /// <summary>The loaded (or fresh) campaign progress. Mutate only via
     /// <see cref="MarkAttempted"/> / <see cref="MarkWon"/> so changes hit disk.</summary>
@@ -69,6 +81,11 @@ public static class CampaignStore
         int playerCount = CampaignProgress.PlayerCountForLevel(level);
         MapGenOptions options = CampaignProgress.MapGenOptionsForLevel(level);
         LoadRequest.Pending = null;
+        LoadRequest.WatchReplay = false;
+        // A fresh launch replaces whatever attempt the level held (the
+        // sheet's Restart, after its own confirm when that attempt was
+        // unfinished).
+        DiscardAttempt(level);
         MarkAttempted(level);
         Log.Info(Log.LogCategory.Campaign,
             $"CampaignStore: launching level {CampaignProgress.LabelFor(level)} " +
@@ -92,6 +109,153 @@ public static class CampaignStore
             $"({_progress.WonCount}/{CampaignProgress.LevelCount})");
         Save();
         return true;
+    }
+
+    // --- Attempts -----------------------------------------------------------
+
+    /// <summary>The recency index: one entry per level with a stored attempt.</summary>
+    public static CampaignAttemptIndex AttemptIndex
+    {
+        get
+        {
+            EnsureAttemptsLoaded();
+            return _attempts!;
+        }
+    }
+
+    /// <summary>
+    /// The level's stored attempt, or null when none (or none readable — a
+    /// failed read is logged, treated as none, and its index entry dropped).
+    /// </summary>
+    public static LoadedSave? LoadAttempt(int level)
+    {
+        LoadedSave? save = Saves.TryLoadCampaignAttempt(level);
+        string label = CampaignProgress.LabelFor(level);
+        if (save == null)
+        {
+            if (AttemptIndex.Remove(level))
+            {
+                Log.Warn(Log.LogCategory.Campaign,
+                    $"CampaignStore: attempt load level {label} -> none, index entry dropped");
+                SaveAttemptIndex();
+            }
+            else
+            {
+                Log.Info(Log.LogCategory.Campaign, $"CampaignStore: attempt load level {label} -> none");
+            }
+            return null;
+        }
+        Log.Info(Log.LogCategory.Campaign,
+            $"CampaignStore: attempt load level {label} -> " +
+            (save.IsFinished
+                ? $"finished(winner={save.WinnerIndex}, replay={(CampaignAttempts.CanReplay(save) ? "yes" : "no")})"
+                : $"unfinished(turn {save.State.Turns.TurnNumber})"));
+        return save;
+    }
+
+    /// <summary>
+    /// Store the level's current game as its attempt (file, then index).
+    /// Called on every human turn start and once at game end (with
+    /// <paramref name="winnerIndex"/> set). Throws on I/O failure so the
+    /// caller can surface it like an autosave failure.
+    /// </summary>
+    public static void RecordAttempt(
+        int level,
+        GameState state,
+        int masterSeed,
+        System.Collections.Generic.IReadOnlyList<Player> players,
+        int maxTurnNumber,
+        System.Collections.Generic.IReadOnlyDictionary<PlayerId, int>? claimVictoryPromptedHighestThreshold,
+        Replay? replay,
+        int? winnerIndex)
+    {
+        (int raw, int packed) = Saves.WriteCampaignAttempt(level, state, masterSeed, players,
+            maxTurnNumber, claimVictoryPromptedHighestThreshold, replay, winnerIndex);
+        AttemptIndex.Set(new CampaignAttemptEntry(
+            level,
+            System.DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
+            state.Turns.TurnNumber,
+            winnerIndex));
+        SaveAttemptIndex();
+        Log.Info(Log.LogCategory.Campaign,
+            $"CampaignStore: attempt write level {CampaignProgress.LabelFor(level)} " +
+            $"turn {state.Turns.TurnNumber} " +
+            $"winner={(winnerIndex is int w ? (w < 0 ? "none" : w.ToString()) : "in-progress")} " +
+            $"raw={raw} gz={packed}");
+    }
+
+    /// <summary>Delete the level's attempt file and index entry. No-op when none.</summary>
+    public static void DiscardAttempt(int level)
+    {
+        try
+        {
+            Saves.DeleteCampaignAttempt(level);
+        }
+        catch (System.Exception ex)
+        {
+            GD.PushWarning($"Failed to discard campaign attempt: {ex.Message}");
+        }
+        if (AttemptIndex.Remove(level)) SaveAttemptIndex();
+        Log.Info(Log.LogCategory.Campaign,
+            $"CampaignStore: attempt discard level {CampaignProgress.LabelFor(level)}");
+    }
+
+    private static void EnsureAttemptsLoaded()
+    {
+        if (_attempts != null) return;
+        _attempts = new CampaignAttemptIndex();
+        bool readable = false;
+        try
+        {
+            if (FileAccess.FileExists(AttemptIndexPath))
+            {
+                using FileAccess f = FileAccess.Open(AttemptIndexPath, FileAccess.ModeFlags.Read);
+                if (f != null)
+                {
+                    _attempts = CampaignAttemptIndexSerializer.Deserialize(f.GetAsText());
+                    readable = true;
+                    Log.Debug(Log.LogCategory.Campaign,
+                        $"CampaignStore: attempt index loaded ({_attempts.Entries.Count} entries)");
+                }
+            }
+        }
+        catch (System.Exception ex)
+        {
+            GD.PushWarning($"Failed to load campaign attempt index: {ex.Message}");
+        }
+        if (!readable) RebuildAttemptIndexFromFiles();
+    }
+
+    // Index missing or unreadable: inflate each attempt file once and
+    // reconstruct it, so a lost sidecar never hides a resumable game.
+    private static void RebuildAttemptIndexFromFiles()
+    {
+        System.Collections.Generic.IReadOnlyList<int> levels = Saves.ListCampaignAttemptLevels();
+        foreach (int level in levels)
+        {
+            LoadedSave? save = Saves.TryLoadCampaignAttempt(level);
+            if (save == null) continue;
+            _attempts!.Set(new CampaignAttemptEntry(
+                level,
+                Saves.CampaignAttemptSavedAtUnix(level),
+                save.State.Turns.TurnNumber,
+                save.WinnerIndex));
+        }
+        if (levels.Count > 0) SaveAttemptIndex();
+        Log.Debug(Log.LogCategory.Campaign,
+            $"CampaignStore: attempt index rebuilt from files ({_attempts!.Entries.Count} entries)");
+    }
+
+    private static void SaveAttemptIndex()
+    {
+        try
+        {
+            AtomicUserFile.Write(AttemptIndexPath, CampaignAttemptIndexSerializer.Serialize(_attempts!));
+        }
+        catch (System.Exception ex)
+        {
+            GD.PushWarning($"Failed to save campaign attempt index: {ex.Message}");
+        }
     }
 
     private static void EnsureLoaded()

@@ -28,6 +28,12 @@ public sealed class SaveStore
     // unreliable inside an exported PCK; reading known paths is fine).
     public const string BundledStartingMapsDirectory = "res://maps/";
     public const string AutosaveSlotName = "autosave";
+    // Per-level campaign attempts (issue #259): one gzipped save per level,
+    // level_XX.json.gz, written on the autosave cadence plus at game end.
+    // Independent of SaveDirectory so a campaign attempt and the freeform
+    // autosave never clobber each other.
+    public const string CampaignAttemptsDirectory = "user://campaign_saves/";
+    private const string CompressedSaveExtension = ".json.gz";
     // Map-sharing staging dirs (issue #92). Export holds files being handed
     // to the OS share sheet; Import is the drop folder users copy .fxhmap
     // files into on platforms without a native file picker (visible in the
@@ -216,14 +222,129 @@ public sealed class SaveStore
     {
         EnsureDirectory(directory);
         string sanitized = SanitizeSlotName(slotName);
-        string json = SaveSerializer.Serialize(
-            state, masterSeed, players, sanitized, maxTurnNumber,
+        string json = SerializeSlot(state, masterSeed, players, sanitized, maxTurnNumber,
+            originMapName, claimVictoryPromptedHighestThreshold, replay, campaignLevel,
+            winnerIndex: null);
+        AtomicWrite(directory, sanitized, json);
+    }
+
+    /// <summary>The one in-progress-save serialize call every slot writer shares.</summary>
+    private static string SerializeSlot(
+        GameState state,
+        int masterSeed,
+        IReadOnlyList<Player> players,
+        string sanitizedSlotName,
+        int maxTurnNumber,
+        string? originMapName,
+        IReadOnlyDictionary<PlayerId, int>? claimVictoryPromptedHighestThreshold,
+        Replay? replay,
+        int? campaignLevel,
+        int? winnerIndex) =>
+        SaveSerializer.Serialize(
+            state, masterSeed, players, sanitizedSlotName, maxTurnNumber,
             originMapName, claimVictoryPromptedHighestThreshold,
             tutorial: null,
             replay: replay,
-            campaignLevel: campaignLevel);
-        AtomicWrite(directory, sanitized, json);
+            campaignLevel: campaignLevel,
+            winnerIndex: winnerIndex);
+
+    // --- Campaign attempts --------------------------------------------------
+
+    /// <summary>
+    /// Write a level's stored attempt: the normal in-progress save payload
+    /// (with <paramref name="winnerIndex"/> set once the game has ended),
+    /// gzipped, into <see cref="CampaignAttemptsDirectory"/>. Returns
+    /// (raw, compressed) byte counts for the caller's log line. Throws on
+    /// I/O failure like <see cref="WriteSlot"/>.
+    /// </summary>
+    public (int RawBytes, int CompressedBytes) WriteCampaignAttempt(
+        int level,
+        GameState state,
+        int masterSeed,
+        IReadOnlyList<Player> players,
+        int maxTurnNumber,
+        IReadOnlyDictionary<PlayerId, int>? claimVictoryPromptedHighestThreshold,
+        Replay? replay,
+        int? winnerIndex)
+    {
+        EnsureDirectory(CampaignAttemptsDirectory);
+        string slot = CampaignAttempts.FileNameFor(level);
+        string json = SerializeSlot(state, masterSeed, players, slot, maxTurnNumber,
+            originMapName: null, claimVictoryPromptedHighestThreshold, replay,
+            campaignLevel: level, winnerIndex: winnerIndex);
+        byte[] packed = SaveCompression.Compress(json);
+        AtomicUserFile.WriteBytes(CampaignAttemptPath(level), packed);
+        return (System.Text.Encoding.UTF8.GetByteCount(json), packed.Length);
     }
+
+    /// <summary>
+    /// Load a level's stored attempt, or null when none is stored. Any read
+    /// or parse failure (corrupt gzip, unknown FormatVersion) is a warning
+    /// plus null — "no stored attempt", never a crash; the caller decides
+    /// whether to drop the level's index entry.
+    /// </summary>
+    public LoadedSave? TryLoadCampaignAttempt(int level)
+    {
+        string path = CampaignAttemptPath(level);
+        if (!FileAccess.FileExists(path)) return null;
+        try
+        {
+            using FileAccess f = FileAccess.Open(path, FileAccess.ModeFlags.Read);
+            if (f == null)
+            {
+                throw new System.IO.IOException(
+                    $"Could not open {path} for reading: {FileAccess.GetOpenError()}");
+            }
+            byte[] bytes = f.GetBuffer((long)f.GetLength());
+            return SaveSerializer.Deserialize(SaveCompression.Decompress(bytes));
+        }
+        catch (System.Exception ex)
+        {
+            GD.PushWarning($"Failed to read campaign attempt for level " +
+                $"{CampaignProgress.LabelFor(level)}: {ex.Message}");
+            Log.Warn(Log.LogCategory.Campaign,
+                $"SaveStore: attempt level {CampaignProgress.LabelFor(level)} unreadable " +
+                $"({ex.Message}) -> none");
+            return null;
+        }
+    }
+
+    /// <summary>Remove a level's stored attempt file. No-op when absent.</summary>
+    public void DeleteCampaignAttempt(int level)
+    {
+        string path = CampaignAttemptPath(level);
+        if (!FileAccess.FileExists(path)) return;
+        Error err = DirAccess.RemoveAbsolute(ProjectSettings.GlobalizePath(path));
+        if (err != Error.Ok)
+        {
+            throw new System.IO.IOException($"Could not delete {path}: {err}");
+        }
+    }
+
+    /// <summary>Levels that have an attempt file on disk (for rebuilding a
+    /// missing index). Empty when the directory doesn't exist.</summary>
+    public IReadOnlyList<int> ListCampaignAttemptLevels()
+    {
+        var levels = new List<int>();
+        if (!DirAccess.DirExistsAbsolute(CampaignAttemptsDirectory)) return levels;
+        for (int level = 0; level < CampaignProgress.LevelCount; level++)
+        {
+            if (FileAccess.FileExists(CampaignAttemptPath(level))) levels.Add(level);
+        }
+        return levels;
+    }
+
+    /// <summary>File modification time (unix seconds) of a level's attempt
+    /// file, or 0 when absent — the recency stamp when the index is rebuilt.</summary>
+    public long CampaignAttemptSavedAtUnix(int level)
+    {
+        string path = CampaignAttemptPath(level);
+        if (!FileAccess.FileExists(path)) return 0;
+        return (long)FileAccess.GetModifiedTime(path);
+    }
+
+    private static string CampaignAttemptPath(int level) =>
+        CampaignAttemptsDirectory + CampaignAttempts.FileNameFor(level) + CompressedSaveExtension;
 
     private static void AtomicWrite(string directory, string sanitized, string json) =>
         AtomicUserFile.Write(directory + sanitized + SaveExtension, json);

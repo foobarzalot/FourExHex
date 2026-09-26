@@ -72,6 +72,17 @@ public sealed class LoadedSave
     /// </summary>
     public string? Author { get; }
 
+    /// <summary>
+    /// Slot index of the player who won this game, or -1 for a no-winner
+    /// end (viking wipeout / stasis). Null while the game is in progress —
+    /// every save written at a human turn start. A campaign attempt written
+    /// at game end is the one producer.
+    /// </summary>
+    public int? WinnerIndex { get; }
+
+    /// <summary>True iff the save records a finished game (<see cref="WinnerIndex"/> set).</summary>
+    public bool IsFinished => WinnerIndex != null;
+
     public LoadedSave(
         GameState state,
         IReadOnlyList<Player> players,
@@ -84,7 +95,8 @@ public sealed class LoadedSave
         Replay? replay = null,
         int? campaignLevel = null,
         bool mapHasBakedKinds = false,
-        string? author = null)
+        string? author = null,
+        int? winnerIndex = null)
     {
         State = state;
         Players = players;
@@ -99,6 +111,7 @@ public sealed class LoadedSave
         Replay = replay;
         CampaignLevel = campaignLevel;
         Author = author;
+        WinnerIndex = winnerIndex;
     }
 }
 
@@ -144,14 +157,16 @@ public static class SaveSerializer
         IReadOnlyDictionary<PlayerId, int>? claimVictoryPromptedHighestThreshold = null,
         Tutorial? tutorial = null,
         Replay? replay = null,
-        int? campaignLevel = null)
+        int? campaignLevel = null,
+        int? winnerIndex = null)
         => SerializeInternal(
             state, masterSeed, players, slotName, maxTurnNumber,
             includeKind: true, originMapName: originMapName,
             claimVictoryPromptedHighestThreshold: claimVictoryPromptedHighestThreshold,
             tutorial: tutorial,
             replay: replay,
-            campaignLevel: campaignLevel);
+            campaignLevel: campaignLevel,
+            winnerIndex: winnerIndex);
 
     /// <summary>
     /// Serialize a starting map — same JSON format as <see cref="Serialize"/>.
@@ -191,7 +206,8 @@ public static class SaveSerializer
         Tutorial? tutorial,
         Replay? replay,
         int? campaignLevel,
-        string? author = null)
+        string? author = null,
+        int? winnerIndex = null)
     {
         var data = new SaveData
         {
@@ -221,6 +237,9 @@ public static class SaveSerializer
             ReplayVersion = (tutorial?.Replay ?? replay) == null
                 ? null : CurrentReplayVersion,
             CampaignLevel = campaignLevel,
+            // Who won, for a save written at game end. Null (omitted) for
+            // every in-progress save, so the wire format is unchanged.
+            WinnerIndex = winnerIndex,
             // Null (omitted) for Freeform so every existing freeform save's
             // wire format is unchanged; only Rising Tides games carry it.
             Mode = state.Mode == GameMode.Freeform ? null : state.Mode,
@@ -425,7 +444,8 @@ public static class SaveSerializer
             replay: replay,
             campaignLevel: data.CampaignLevel,
             mapHasBakedKinds: mapHasBakedKinds,
-            author: string.IsNullOrEmpty(data.Author) ? null : data.Author);
+            author: string.IsNullOrEmpty(data.Author) ? null : data.Author,
+            winnerIndex: data.WinnerIndex);
     }
 
     /// <summary>
@@ -1330,6 +1350,13 @@ public sealed class SaveData
     /// campaign screen. Null for freeform games.
     /// </summary>
     public int? CampaignLevel { get; set; }
+
+    /// <summary>
+    /// Winner of a finished game: the winner's slot index, or -1 for a
+    /// no-winner end (viking wipeout / stasis). Null/omitted while the game
+    /// is in progress (every human-turn-start save and every older save).
+    /// </summary>
+    public int? WinnerIndex { get; set; }
 
     /// <summary>
     /// The selectable game mode. Null for

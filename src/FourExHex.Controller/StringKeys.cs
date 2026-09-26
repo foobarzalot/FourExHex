@@ -158,7 +158,6 @@ public static class StringKeys
     public const string HudButtonContinue = "hud.button.continue";
     public const string HudButtonWinNow = "hud.button.win_now";
     public const string HudButtonContinuePlaying = "hud.button.continue_playing";
-    public const string HudButtonNextUnbeaten = "hud.button.next_unbeaten";
     public const string HudButtonBackToCampaign = "hud.button.back_to_campaign";
 
     // Guided UI tour (HudView.BuildTourSteps).
@@ -355,6 +354,8 @@ public static class StringKeys
     public const string CampaignStatusLost = "campaign.status.lost";
     public const string CampaignStatusUnattempted = "campaign.status.unattempted";
     public const string CampaignBlurbFreeform = "campaign.blurb.freeform";
+    public const string CampaignRestartTitle = "campaign.restart_title";
+    public const string CampaignRestartBody = "campaign.restart_body";
     public const string CampaignBlurbRisingTides = "campaign.blurb.rising_tides";
     public const string CampaignBlurbFogOfWar = "campaign.blurb.fog_of_war";
     public const string CampaignBlurbVikingRaiders = "campaign.blurb.viking_raiders";

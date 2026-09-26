@@ -78,6 +78,8 @@ public partial class MainMenuScene : Control
     // Escape handler can let the sheet consume Escape (cancel) instead of
     // backing out of the whole campaign ladder.
     private MapInfoSheet? _campaignSheet;
+    // Fresh per use like the sheet: its title names the level.
+    private ConfirmModal? _campaignRestartConfirm;
     // New Game / Map Editor source chooser (New Map | Load …).
     private EscMenu? _sourceChooser;
     // Design (unscaled) size of the landing panel, recorded at build time so
@@ -545,7 +547,7 @@ public partial class MainMenuScene : Control
         _landingPlayButton = Place(Strings.Get(StringKeys.MenuPlayGame), OnPlayPressed);
 
         _landingResumeButton = Place(Strings.Get(StringKeys.MenuResume), OnResumePressed);
-        _landingResumeButton.Disabled = !slots.Any(s => s.IsAutosave);
+        _landingResumeButton.Disabled = PickResumeTarget(slots) == null;
 
         // Achievements: the earned/unearned record, the cross-session
         // progression surface that stays on the landing page.
@@ -673,7 +675,7 @@ public partial class MainMenuScene : Control
         // Resume / Load render disabled but keep their grid slots so the grid
         // never reflows when a save exists (design handoff).
         _landingResumeButton = MakeGridButton(Strings.Get(StringKeys.MenuResume), OnResumePressed);
-        _landingResumeButton.Disabled = !slots.Any(s => s.IsAutosave);
+        _landingResumeButton.Disabled = PickResumeTarget(slots) == null;
         grid.AddChild(_landingResumeButton);
         grid.AddChild(MakeGridButton(Strings.Get(StringKeys.MenuAchievements), OnAchievementsPressed));
         grid.AddChild(MakeGridButton(Strings.Get(StringKeys.MenuPlayTutorial), OnPlayTutorialPressed));
@@ -1390,20 +1392,129 @@ public partial class MainMenuScene : Control
     }
 
     /// <summary>Tap on a campaign hex: open the confirmation sheet
-    /// (level number, tier, current status, Play / Cancel). A fresh
-    /// modal per tap — content is level-specific and the modal family
-    /// builds its UI once in _Ready.</summary>
+    /// (level number, tier, current status, board preview) whose actions
+    /// follow the level's stored attempt — Play (none), Continue + Restart
+    /// (unfinished), Watch Replay + Restart (finished); see
+    /// <see cref="CampaignSheetActions"/>. A fresh modal per tap — content
+    /// is level-specific and the modal family builds its UI once in _Ready.</summary>
     private void OnCampaignLevelTapped(int level)
     {
-        // Confirm sheet with a live thumbnail of the level's board.
-        // The sheet derives title/status/seed from the level itself.
-        MapInfoSheet sheet = CampaignConfirmSheet.Create(level);
+        string label = CampaignProgress.LabelFor(level);
+        LoadedSave? attempt = CampaignStore.LoadAttempt(level);
+        CampaignAttemptKind kind = CampaignAttempts.Classify(attempt);
+        bool canReplay = attempt != null && CampaignAttempts.CanReplay(attempt);
+        System.Collections.Generic.IReadOnlyList<CampaignSheetAction> actions =
+            CampaignSheetActions.For(kind, canReplay);
+        Log.Info(Log.LogCategory.Campaign,
+            $"MainMenu: campaign sheet level {label} state={kind} " +
+            $"actions=[{string.Join(",", actions)}]");
+
+        var buttons = new System.Collections.Generic.List<MapInfoSheet.SheetAction>();
+        foreach (CampaignSheetAction action in actions)
+        {
+            buttons.Add(action switch
+            {
+                CampaignSheetAction.Continue => new MapInfoSheet.SheetAction(
+                    Strings.Get(StringKeys.HudButtonContinue),
+                    () => ContinueCampaignAttempt(level, attempt!, watchReplay: false)),
+                CampaignSheetAction.WatchReplay => new MapInfoSheet.SheetAction(
+                    Strings.Get(StringKeys.HudButtonReplay),
+                    () => ContinueCampaignAttempt(level, attempt!, watchReplay: true)),
+                CampaignSheetAction.Restart => new MapInfoSheet.SheetAction(
+                    Strings.Get(StringKeys.PauseRestart),
+                    () => RestartCampaignLevel(level, kind)),
+                _ => new MapInfoSheet.SheetAction(
+                    Strings.Get(StringKeys.ButtonPlay),
+                    () =>
+                    {
+                        Log.Info(Log.LogCategory.Campaign, $"MainMenu: campaign sheet level {label} -> play");
+                        LaunchCampaignLevel(level);
+                    }),
+            });
+        }
+
+        MapInfoSheet sheet = CampaignConfirmSheet.Create(level, buttons);
         _campaignSheet = sheet;
-        sheet.Confirmed += () => LaunchCampaignLevel(level);
-        sheet.Canceled += () => { _campaignSheet = null; sheet.QueueFree(); };
+        sheet.Canceled += () =>
+        {
+            Log.Info(Log.LogCategory.Campaign, $"MainMenu: campaign sheet level {label} -> cancel");
+            _campaignSheet = null;
+            sheet.QueueFree();
+        };
         AddChild(sheet);
         sheet.Open();
     }
+
+    /// <summary>Open a stored attempt: resume it (Continue) or play it back
+    /// (Watch Replay). The save's own roster and seed drive the game; the
+    /// campaign level rides in the save, so <c>Main</c> restores it. No
+    /// <see cref="GameSettings.AdoptRosterFrom"/> — a campaign roster must
+    /// not clobber the freeform New Game default.</summary>
+    private void ContinueCampaignAttempt(int level, LoadedSave attempt, bool watchReplay)
+    {
+        Log.Info(Log.LogCategory.Campaign,
+            $"MainMenu: campaign sheet level {CampaignProgress.LabelFor(level)} -> " +
+            (watchReplay ? "replay" : "continue") +
+            $" (turn {attempt.State.Turns.TurnNumber})");
+        LoadRequest.Pending = attempt;
+        LoadRequest.WatchReplay = watchReplay;
+        GameSettings.MasterSeed = attempt.MasterSeed;
+        GameSettings.CampaignLevel = level;
+        GetTree().ChangeSceneToFile("res://scenes/main.tscn");
+    }
+
+    /// <summary>Restart from the sheet: confirm first when it would discard
+    /// a game in progress; a finished attempt (and its replay) is replaced
+    /// silently. The discard itself happens in <see cref="CampaignStore.PrepareLaunch"/>.</summary>
+    private void RestartCampaignLevel(int level, CampaignAttemptKind kind)
+    {
+        string label = CampaignProgress.LabelFor(level);
+        if (!CampaignSheetActions.RestartNeedsConfirm(kind))
+        {
+            Log.Info(Log.LogCategory.Campaign, $"MainMenu: campaign sheet level {label} -> restart");
+            LaunchCampaignLevel(level);
+            return;
+        }
+        Log.Info(Log.LogCategory.Campaign, $"MainMenu: campaign sheet level {label} -> restart-confirm");
+        var confirm = new ConfirmModal(
+            Strings.Get(StringKeys.CampaignRestartTitle, ("level", label)),
+            Strings.Get(StringKeys.CampaignRestartBody),
+            Strings.Get(StringKeys.PauseRestart));
+        _campaignRestartConfirm = confirm;
+        confirm.Confirmed += () =>
+        {
+            Log.Info(Log.LogCategory.Campaign, $"MainMenu: campaign restart level {label} confirmed");
+            DismissCampaignRestartConfirm();
+            LaunchCampaignLevel(level);
+        };
+        confirm.Canceled += () =>
+        {
+            Log.Info(Log.LogCategory.Campaign, $"MainMenu: campaign restart level {label} cancelled");
+            DismissCampaignRestartConfirm();
+        };
+        AddChild(confirm);
+        confirm.Open();
+    }
+
+    // The restart confirm is a per-use modal (its title names the level),
+    // so every close path — confirm, cancel, system back — frees it.
+    private void DismissCampaignRestartConfirm()
+    {
+        ConfirmModal? confirm = _campaignRestartConfirm;
+        _campaignRestartConfirm = null;
+        if (confirm == null) return;
+        confirm.Close();
+        confirm.QueueFree();
+    }
+
+    /// <summary>What the landing Resume button opens: the most recently
+    /// saved unfinished game across the freeform autosave slot and every
+    /// stored campaign attempt (<see cref="ResumeTarget.Pick"/>).</summary>
+    private static ResumeTarget? PickResumeTarget(
+        System.Collections.Generic.IReadOnlyList<SaveSlotInfo> slots) =>
+        ResumeTarget.Pick(
+            slots.FirstOrDefault(s => s.IsAutosave)?.SavedAtUnix,
+            CampaignStore.AttemptIndex.Entries);
 
     /// <summary>Launch a campaign level: <see cref="CampaignStore.PrepareLaunch"/>
     /// pins the seed, locks the roster, and marks the level attempted
@@ -1425,7 +1536,7 @@ public partial class MainMenuScene : Control
         System.Collections.Generic.IReadOnlyList<SaveSlotInfo> slots = _saveStore.ListSlots();
         if (_landingResumeButton != null)
         {
-            _landingResumeButton.Disabled = !slots.Any(s => s.IsAutosave);
+            _landingResumeButton.Disabled = PickResumeTarget(slots) == null;
         }
         if (_landingLoadButton != null)
         {
@@ -1742,6 +1853,7 @@ public partial class MainMenuScene : Control
         && !(_achievementsPanel?.IsOpen ?? false)
         && !(_quitConfirmModal?.IsOpen ?? false)
         && !(_campaignSheet?.IsOpen ?? false)
+        && !(_campaignRestartConfirm?.IsOpen ?? false)
         && !(_sourceChooser?.IsOpen ?? false)
         && !(_mapGenSettingsPanel?.IsOpen ?? false)
         && !(_loadDialog?.Visible ?? false);
@@ -2171,6 +2283,25 @@ public partial class MainMenuScene : Control
 
     private void OnResumePressed()
     {
+        ResumeTarget? target = PickResumeTarget(_saveStore.ListSlots());
+        Log.Info(Log.LogCategory.Campaign,
+            "MainMenu: Resume -> " + (target switch
+            {
+                null => "none",
+                { IsAutosave: true } => "autosave",
+                { CampaignLevel: int lv } => $"campaign level {CampaignProgress.LabelFor(lv)}",
+            }));
+        if (target is { CampaignLevel: int level })
+        {
+            LoadedSave? attempt = CampaignStore.LoadAttempt(level);
+            if (attempt != null)
+            {
+                ContinueCampaignAttempt(level, attempt, watchReplay: false);
+                return;
+            }
+            // The file vanished under the index: fall through to the
+            // autosave, and re-gate below if that fails too.
+        }
         Log.Info(Log.LogCategory.Input, "MainMenu Resume pressed — loading autosave.");
         try
         {
@@ -2227,6 +2358,12 @@ public partial class MainMenuScene : Control
         {
             Log.Debug(Log.LogCategory.Input, "[back] cancel quit confirm");
             _quitConfirmModal.Close();
+            return;
+        }
+        if (_campaignRestartConfirm is { IsOpen: true })
+        {
+            Log.Debug(Log.LogCategory.Input, "[back] cancel campaign restart confirm");
+            DismissCampaignRestartConfirm();
             return;
         }
         if (_campaignSheet is { IsOpen: true })
@@ -2301,6 +2438,7 @@ public partial class MainMenuScene : Control
         // The campaign level confirm sheet owns its own Escape (cancel) while
         // open — don't also back out of the ladder underneath it.
         if (_campaignSheet != null && _campaignSheet.IsOpen) return;
+        if (_campaignRestartConfirm != null && _campaignRestartConfirm.IsOpen) return;
 
         // The New Game / Map Editor source chooser owns its own Escape while
         // open.

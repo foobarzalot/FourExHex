@@ -4,16 +4,18 @@ using System.Collections.Generic;
 using Godot;
 
 /// <summary>
-/// Builds the campaign level "Play?" confirm sheet as a configured
+/// Builds the campaign level confirm sheet as a configured
 /// <see cref="MapInfoSheet"/>: serif title, tier/status line, the single human
-/// color for the level, and a live preview of the level's exact
-/// procedural board (level N = seed N). The sheet UI itself is shared with the
+/// color for the level, a live preview of the level's exact procedural
+/// board, and the caller's action buttons — which depend on the level's
+/// stored attempt (see <see cref="CampaignSheetActions"/>; the menu maps
+/// each action to a label + handler). The sheet UI itself is shared with the
 /// New Game / Map Editor "load starting map" flows; this factory just supplies
 /// the campaign-specific content.
 /// </summary>
 public static class CampaignConfirmSheet
 {
-    public static MapInfoSheet Create(int level)
+    public static MapInfoSheet Create(int level, IReadOnlyList<MapInfoSheet.SheetAction> actions)
     {
         int seed = CampaignProgress.SeedForLevel(level);
         string title = Strings.Get(StringKeys.CampaignLevelTitle,
@@ -60,6 +62,7 @@ public static class CampaignConfirmSheet
                 CampaignProgress.MapGenOptionsForLevel(level),
                 Player.BuildCampaignRoster(level),
                 mode),
+            actions: actions,
             gameMode: gameMode,
             gameModeEmphasis: mode != GameMode.Freeform);
     }

@@ -14,9 +14,12 @@ using Godot;
 /// players, or none.
 ///
 /// The caller supplies the title, an optional status line, the list of human
-/// identities to surface, and a thumbnail-request delegate (the sheet owns no
+/// identities to surface, a thumbnail-request delegate (the sheet owns no
 /// knowledge of seeds vs. saved maps — campaign passes a procedural request,
-/// the load flow a saved-map request). Layout/chrome mirror the New Game
+/// the load flow a saved-map request), and optionally its own action
+/// buttons: the campaign sheet's set depends on the level's stored attempt
+/// (Play / Continue + Restart / Watch Replay + Restart). The first action is
+/// the primary (Enter); Cancel is always the sheet's own. Layout/chrome mirror the New Game
 /// map-config screen via <see cref="LandscapeMenuChrome"/>: fills the safe area
 /// on a phone, caps to 920×520 (transposed in portrait) on desktop; an
 /// orientation flip rebuilds the body and re-renders.
@@ -31,6 +34,9 @@ public sealed partial class MapInfoSheet : CanvasLayer
     /// <summary>One human player to surface in the "playing as" block.</summary>
     public readonly record struct HumanIdentity(string Name, Color Color);
 
+    /// <summary>One action button: the sheet closes, then runs <see cref="OnPressed"/>.</summary>
+    public readonly record struct SheetAction(string Label, Action OnPressed);
+
     private const float MaxLong = 920f;
     private const float MaxShort = 520f;
 
@@ -40,7 +46,8 @@ public sealed partial class MapInfoSheet : CanvasLayer
     private readonly string _title;
     private readonly string _status;
     private readonly IReadOnlyList<HumanIdentity> _humans;
-    private readonly string _confirmText;
+    // Primary first. Defaults to a single Play action raising Confirmed.
+    private readonly IReadOnlyList<SheetAction> _actions;
     // Optional game-mode line: the campaign confirm sheet sets this
     // to tell the player which mode the level plays in; _gameModeEmphasis golds
     // the Rising Tides callout. Empty = no row (other callers unchanged).
@@ -63,7 +70,7 @@ public sealed partial class MapInfoSheet : CanvasLayer
         string status,
         IReadOnlyList<HumanIdentity> humans,
         Action<MapThumbnailView> requestThumbnail,
-        string? confirmText = null,
+        IReadOnlyList<SheetAction>? actions = null,
         string gameMode = "",
         bool gameModeEmphasis = false)
     {
@@ -71,7 +78,10 @@ public sealed partial class MapInfoSheet : CanvasLayer
         _status = status;
         _humans = humans;
         _requestThumbnail = requestThumbnail;
-        _confirmText = confirmText ?? Strings.Get(StringKeys.ButtonPlay);
+        _actions = actions ?? new[]
+        {
+            new SheetAction(Strings.Get(StringKeys.ButtonPlay), () => Confirmed?.Invoke()),
+        };
         _gameMode = gameMode;
         _gameModeEmphasis = gameModeEmphasis;
     }
@@ -125,11 +135,24 @@ public sealed partial class MapInfoSheet : CanvasLayer
         _thumbnail = MakeThumbnail();
         col.AddChild(_thumbnail);
 
-        var buttonRow = new HBoxContainer { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
+        // Two buttons share a row; three or more stack (a phone-width row
+        // can't fit "Watch Replay / Restart / Cancel" at this font size).
+        BoxContainer buttonRow = _actions.Count > 1
+            ? new VBoxContainer()
+            : new HBoxContainer();
+        buttonRow.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
         buttonRow.AddThemeConstantOverride("separation", 12);
         col.AddChild(buttonRow);
-        buttonRow.AddChild(MakeSheetButton(Strings.Get(StringKeys.ButtonCancel), Cancel));
-        buttonRow.AddChild(MakeSheetButton(_confirmText, Confirm));
+        if (_actions.Count > 1)
+        {
+            AddActionButtons(buttonRow);
+            buttonRow.AddChild(MakeSheetButton(Strings.Get(StringKeys.ButtonCancel), Cancel));
+        }
+        else
+        {
+            buttonRow.AddChild(MakeSheetButton(Strings.Get(StringKeys.ButtonCancel), Cancel));
+            AddActionButtons(buttonRow);
+        }
     }
 
     private void BuildLandscapeBody()
@@ -154,7 +177,7 @@ public sealed partial class MapInfoSheet : CanvasLayer
         rail.AddChild(MakePlayingAs(HorizontalAlignment.Left));
         rail.AddChild(new Control { SizeFlagsVertical = Control.SizeFlags.ExpandFill });
         rail.AddChild(MakeSheetButton(Strings.Get(StringKeys.ButtonCancel), Cancel));
-        rail.AddChild(MakeSheetButton(_confirmText, Confirm));
+        AddActionButtons(rail);
 
         hbox.AddChild(new ColorRect
         {
@@ -292,6 +315,17 @@ public sealed partial class MapInfoSheet : CanvasLayer
         SizeFlagsVertical = Control.SizeFlags.ExpandFill,
     };
 
+    /// <summary>One button per action, primary first, each closing the
+    /// sheet before it runs so a scene change never races the modal.</summary>
+    private void AddActionButtons(BoxContainer container)
+    {
+        foreach (SheetAction action in _actions)
+        {
+            SheetAction captured = action;
+            container.AddChild(MakeSheetButton(captured.Label, () => Run(captured)));
+        }
+    }
+
     private static Button MakeSheetButton(string text, Action onPressed)
     {
         var button = new Button
@@ -333,11 +367,15 @@ public sealed partial class MapInfoSheet : CanvasLayer
         Visible = false;
     }
 
-    private void Confirm()
+    private void Run(SheetAction action)
     {
         Close();
-        Confirmed?.Invoke();
+        Log.Debug(Log.LogCategory.Display, $"MapInfoSheet action \"{action.Label}\"");
+        action.OnPressed();
     }
+
+    /// <summary>Enter / the primary action: the first one supplied.</summary>
+    private void Confirm() => Run(_actions[0]);
 
     private void Cancel()
     {

@@ -32,6 +32,12 @@ public partial class Main : Node2D
     /// drives the win-recording GameEnded hook, the campaign victory
     /// overlay, and the CampaignLevel field of every save written.</summary>
     private int? _campaignLevel;
+    /// <summary>True when this scene was opened to play back a stored
+    /// campaign attempt (the sheet's Watch Replay): BeginReplay runs
+    /// instead of Resume, intros are skipped, and no attempt is written.</summary>
+    private bool _watchReplay;
+    /// <summary>One-shot latch for the game-end attempt write.</summary>
+    private bool _finalAttemptWritten;
     private SaveNameModal? _saveModal;
     private SlotPickerDialog? _loadDialog;
     private ConfirmModal? _restartConfirmModal;
@@ -118,6 +124,8 @@ public partial class Main : Node2D
         // a fresh game.
         LoadedSave? pendingLoad = LoadRequest.Pending;
         LoadRequest.Pending = null;
+        _watchReplay = pendingLoad != null && LoadRequest.WatchReplay;
+        LoadRequest.WatchReplay = false;
 
         // --- Model construction ------------------------------------------
         // In normal mode we read grid dimensions off a HexMapView
@@ -407,7 +415,6 @@ public partial class Main : Node2D
                     MainMenuScene.OpenCampaignOnArrival = true;
                     AbandonAndReturnToMenu();
                 };
-                visibleHud.CampaignNextLevelClicked += LaunchNextUnbeatenCampaignLevel;
             }
 
             // ESC and the Pause HUD button both raise EscRequested.
@@ -538,6 +545,9 @@ public partial class Main : Node2D
             // victory screen reads updated totals. Subscribed after the
             // replay hook; both run synchronously on GameEnded.
             _controller.GameEnded += OnGameEndedRecordCampaignResult;
+            // Campaign attempt: store the finished game (with its winner)
+            // so the level's hex can offer Watch Replay next time.
+            _controller.GameEnded += OnGameEndedRecordCampaignAttempt;
         }
 
         if (diagnosticMode)
@@ -568,7 +578,19 @@ public partial class Main : Node2D
         // the saved terrain.
         void BeginPlay()
         {
-            if (pendingLoad != null && !isStartingMap)
+            if (_watchReplay)
+            {
+                // Watch a stored campaign attempt: no Resume (which would run
+                // start-of-turn bookkeeping and AI turns against the stored
+                // end board) — BeginReplay alone rewinds to the recorded
+                // start and plays the beats through to the ending.
+                Log.Info(Log.LogCategory.Campaign,
+                    $"Main: watch replay level " +
+                    $"{(_campaignLevel is int wl ? CampaignProgress.LabelFor(wl) : "-")} " +
+                    $"({_controller.ReplayBeats.Count} beats)");
+                _controller.BeginReplay();
+            }
+            else if (pendingLoad != null && !isStartingMap)
             {
                 _controller.Resume();
             }
@@ -591,7 +613,7 @@ public partial class Main : Node2D
         // gold → mountain. Skipped in diagnostic mode (headless, no tap input).
         GameMode resolvedMode = _state.Mode;
         var intros = new List<(string text, HexCoord? focus, string label)>();
-        if (!diagnosticMode)
+        if (!diagnosticMode && !_watchReplay)
         {
             if (GameModeIntro.ShouldShow(resolvedMode))
             {
@@ -803,21 +825,6 @@ public partial class Main : Node2D
     }
 
     /// <summary>
-    /// "Next unbeaten level" on the campaign victory overlay: launch the
-    /// lowest non-won level via the shared campaign launch path. Hidden by
-    /// HudView when everything is won, so the null check is defensive.
-    /// </summary>
-    private void LaunchNextUnbeatenCampaignLevel()
-    {
-        if (CampaignStore.Progress.NextUp is not int next) return;
-        // Same teardown rationale as AbandonAndReturnToMenu: drop any
-        // in-flight AI step before swapping scenes.
-        _controller?.AbandonGame();
-        CampaignStore.PrepareLaunch(next);
-        GetTree().ChangeSceneToFile("res://scenes/main.tscn");
-    }
-
-    /// <summary>
     /// Drop any pending AI step before tearing down the scene so an in-
     /// flight SceneTreeTimer can't fire StepAiExecute against disposed
     /// Polygon2D nodes after the swap, then return to the main menu.
@@ -831,11 +838,19 @@ public partial class Main : Node2D
     }
 
     /// <summary>
-    /// Autosave handler. Captures the current game state into the
-    /// "autosave" slot every time a human turn begins, so closing the
-    /// game between turns never loses progress.
+    /// Autosave handler, every time a human turn begins, so closing the
+    /// game between turns never loses progress. A campaign game writes its
+    /// level's stored attempt (<see cref="CampaignStore.RecordAttempt"/>)
+    /// and leaves the global "autosave" slot alone, so a campaign attempt
+    /// and a freeform autosave coexist; everything else writes the slot.
     /// </summary>
     private void OnHumanTurnStartedAutosave()
+    {
+        if (_campaignLevel is int level) WriteCampaignAttempt(level, winnerIndex: null);
+        else WriteAutosaveSlot();
+    }
+
+    private void WriteAutosaveSlot()
     {
         try
         {
@@ -850,6 +865,42 @@ public partial class Main : Node2D
         }
     }
 
+    private void WriteCampaignAttempt(int level, int? winnerIndex)
+    {
+        try
+        {
+            CampaignStore.RecordAttempt(level, _state, _controller.MasterSeed, _players,
+                _maxTurnNumber, _session.ClaimVictoryPromptedHighestThreshold,
+                replay: BuildReplaySnapshot(),
+                winnerIndex: winnerIndex);
+        }
+        catch (System.Exception ex)
+        {
+            GD.PushError($"Campaign attempt save failed: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// GameEnded hook: store the finished campaign game as the level's
+    /// attempt, stamped with its winner. Once per game — a replay's re-fired
+    /// GameEnded and a watch-only session never write (the stored file
+    /// already holds this ending).
+    /// </summary>
+    private void OnGameEndedRecordCampaignAttempt()
+    {
+        if (_campaignLevel is not int level) return;
+        if (_watchReplay || _controller.IsReplayMode || _finalAttemptWritten)
+        {
+            Log.Debug(Log.LogCategory.Campaign,
+                $"Main: campaign attempt final write skipped " +
+                $"(watch={_watchReplay}, replay={_controller.IsReplayMode}, written={_finalAttemptWritten})");
+            return;
+        }
+        _finalAttemptWritten = true;
+        int winnerIndex = _session.Winner is PlayerId w ? (w.IsNone ? -1 : w.Index) : -1;
+        WriteCampaignAttempt(level, winnerIndex);
+    }
+
     /// <summary>
     /// Describe the live game for a bug report, and refresh the autosave
     /// first so the bundle carries the moment the player pressed Send rather
@@ -858,7 +909,9 @@ public partial class Main : Node2D
     /// </summary>
     private BugReportGameFacts BuildBugReportFacts()
     {
-        OnHumanTurnStartedAutosave();
+        // Always the global slot: that is the file the bundle packs, for a
+        // campaign game too.
+        WriteAutosaveSlot();
         int humans = 0;
         int computers = 0;
         foreach (Player player in _players)

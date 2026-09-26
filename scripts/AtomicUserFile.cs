@@ -27,7 +27,17 @@ public static class AtomicUserFile
     /// <exception cref="System.IO.IOException">
     /// The scratch file could not be opened, or the rename failed.
     /// </exception>
-    public static void Write(string path, string text)
+    public static void Write(string path, string text) =>
+        WriteBytes(path, System.Text.Encoding.UTF8.GetBytes(text));
+
+    /// <summary>
+    /// Binary form of <see cref="Write"/> — the gzipped campaign attempt
+    /// files (<see cref="SaveCompression"/>) go through here.
+    /// </summary>
+    /// <exception cref="System.IO.IOException">
+    /// The scratch file could not be opened, or the rename failed.
+    /// </exception>
+    public static void WriteBytes(string path, byte[] bytes)
     {
         string tempPath = path + TempSuffix;
 
@@ -38,7 +48,7 @@ public static class AtomicUserFile
                 throw new System.IO.IOException(
                     $"Could not open {tempPath} for writing: {FileAccess.GetOpenError()}");
             }
-            f.StoreString(text);
+            f.StoreBuffer(bytes);
         }
 
         // Godot's DirAccess has no atomic rename across an existing

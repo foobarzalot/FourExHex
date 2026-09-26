@@ -2199,7 +2199,6 @@ public partial class HudView : OrientationHud, IHudView
     // Main-facing like NewGameClicked / MainMenuClicked — not part of the
     // controller's IHudView contract, so GameController stays untouched.
 
-    public event Action? CampaignNextLevelClicked;
     public event Action? CampaignBackClicked;
 
     /// <summary>Campaign level this game was launched from, or null for
@@ -2209,13 +2208,12 @@ public partial class HudView : OrientationHud, IHudView
     private Control _campaignVictoryOverlay = null!;
     private Label _campaignVictoryLabel = null!;
     private Label _campaignVictorySubtitle = null!;
-    private Button _campaignNextButton = null!;
 
     public void SetCampaignLevel(int level) => _campaignLevel = level;
 
     /// <summary>
     /// Build the campaign variant of the victory overlay: "Level XX — won"
-    /// with the updated campaign total, and Next unbeaten level / Back to
+    /// with the updated campaign total, and Watch Replay / Back to
     /// campaign buttons. Shown by <see cref="Refresh"/> instead of the
     /// standard victory overlay when a campaign game ends with the human
     /// winning (an AI win shows the standard overlay — the level stays
@@ -2227,14 +2225,10 @@ public partial class HudView : OrientationHud, IHudView
             eyebrowText: Strings.Get(StringKeys.HudOverlayCampaignEyebrow),
             titleText: "",  // always set to the level-won line by Refresh
             titleFontSize: 52,
-            // Wide enough to keep "Next unbeaten level / Watch Replay /
-            // Back to campaign" on one row — the widest button set of the
-            // endgame family. See the row-fit log in BuildEndgameOverlay.
-            designWidth: 740f,
+            designWidth: 580f,
             buttonMinWidth: 150f,
             buttonSpecs: new (string, Action)[]
             {
-                (Strings.Get(StringKeys.HudButtonNextUnbeaten), () => CampaignNextLevelClicked?.Invoke()),
                 (Strings.Get(StringKeys.HudButtonReplay), () =>
                 {
                     Log.Debug(Log.LogCategory.Campaign, "[HudView] campaign Replay clicked");
@@ -2244,8 +2238,7 @@ public partial class HudView : OrientationHud, IHudView
             });
         _campaignVictoryOverlay = overlay;
         _campaignVictoryLabel = title;
-        _campaignNextButton = buttons[0];
-        _campaignReplayButton = buttons[1];
+        _campaignReplayButton = buttons[0];
         _campaignReplayButton.Disabled = true;  // gated by SetReplayAvailable
 
         // Campaign-total subtitle slotted between the title and the gold
@@ -2997,8 +2990,6 @@ public partial class HudView : OrientationHud, IHudView
                 _campaignVictorySubtitle.Text = Strings.Get(StringKeys.HudCampaignProgress,
                     ("won", progress.WonCount.ToString()),
                     ("total", CampaignProgress.LevelCount.ToString()));
-                // All 256 won: nothing left for "Next unbeaten level".
-                _campaignNextButton.Visible = progress.NextUp != null;
                 _campaignVictoryOverlay.Visible = true;
                 _victoryOverlay.Visible = false;
                 _aiWonOverlay.Visible = false;

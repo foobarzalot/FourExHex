@@ -1145,4 +1145,52 @@ public class SaveSerializerTests
 
         Assert.Null(loaded.CampaignLevel);
     }
+
+    [Theory]
+    [InlineData(2)]
+    [InlineData(-1)]
+    public void Serialize_RoundTripPreservesWinnerIndex(int winnerIndex)
+    {
+        // A finished game's save (a campaign attempt written at game end)
+        // records who won: the winner's slot index, or -1 for a no-winner
+        // end (viking wipeout / stasis). Null = still in progress.
+        (GameState state, IReadOnlyList<Player> players) = BuildRichState();
+
+        string json = SaveSerializer.Serialize(state, 42, players, "s", 100,
+            winnerIndex: winnerIndex);
+        LoadedSave loaded = SaveSerializer.Deserialize(json);
+
+        Assert.Equal(winnerIndex, loaded.WinnerIndex);
+        Assert.True(loaded.IsFinished);
+    }
+
+    [Fact]
+    public void Serialize_InProgressGame_OmitsWinnerIndexAndLoadsUnfinished()
+    {
+        // In-progress saves must not carry the field (unchanged wire format
+        // for every existing save) and load as unfinished.
+        (GameState state, IReadOnlyList<Player> players) = BuildRichState();
+
+        string json = SaveSerializer.Serialize(state, 42, players, "s", 100);
+        LoadedSave loaded = SaveSerializer.Deserialize(json);
+
+        Assert.DoesNotContain("WinnerIndex", json);
+        Assert.Null(loaded.WinnerIndex);
+        Assert.False(loaded.IsFinished);
+    }
+
+    [Fact]
+    public void Deserialize_SaveWithoutWinnerField_LoadsUnfinished()
+    {
+        // Older saves never wrote WinnerIndex; they load in progress.
+        (GameState state, IReadOnlyList<Player> players) = BuildRichState();
+        string json = SaveSerializer.Serialize(state, 42, players, "s", 100)
+            .Replace($"\"FormatVersion\": {SaveSerializer.CurrentFormatVersion}",
+                "\"FormatVersion\": 20");
+
+        LoadedSave loaded = SaveSerializer.Deserialize(json);
+
+        Assert.Null(loaded.WinnerIndex);
+        Assert.False(loaded.IsFinished);
+    }
 }

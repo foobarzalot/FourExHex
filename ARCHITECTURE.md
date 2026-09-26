@@ -1534,9 +1534,17 @@ seed (no consumption count) and load reproduces it.
   pinned by `DeterminismProbeTests`, which fails on any machine or runtime
   that computes a different game.
 - **Autosave.** `Main` subscribes `controller.HumanTurnStarted` to a handler
-  writing the `autosave` slot via `SaveStore.WriteAutosave`. Fires once per
-  human turn, after start-of-turn bookkeeping; AI turns and game-over states
-  skipped.
+  that fires once per human turn, after start-of-turn bookkeeping; AI turns
+  and game-over states skipped. A freeform / starting-map game writes the
+  `autosave` slot via `SaveStore.WriteAutosave`; a campaign game writes its
+  level's stored attempt instead (`CampaignStore.RecordAttempt`, see
+  **Campaign mode**), so a campaign attempt and a freeform autosave coexist.
+  The bug-report bundle always refreshes the `autosave` slot, since that is
+  the file it packs.
+- **Winner.** Optional `WinnerIndex` — the winner's slot index, `-1` for a
+  no-winner end (viking wipeout / stasis); null/missing while in progress,
+  so every turn-start save's wire format is unchanged. Written only by the
+  campaign game-end attempt write; `LoadedSave.IsFinished` reads it.
 - **Named saves.** Pause menu's **Save Game** opens an `AcceptDialog` for a slot
   name and calls `SaveStore.WriteSlot`. The `autosave` slot is reserved.
 - **In-game load.** Pause menu's **Load Game** opens the shared
@@ -1580,7 +1588,15 @@ seed (no consumption count) and load reproduces it.
   OriginMapName + claim-victory tiers) and changes scene to `main.tscn`.
   `Main._Ready` consumes and clears it. On the in-progress path, fresh grid
   construction is skipped and `controller.Resume()` runs instead of
-  `StartGame()`.
+  `StartGame()`. `LoadRequest.WatchReplay` (consumed and cleared alongside)
+  opens the save in playback instead: `Main` calls `BeginReplay()` in place
+  of `Resume()`, skips first-encounter intros, and writes no attempt.
+- **Landing Resume.** Opens the most recently saved *unfinished* game across
+  the `autosave` slot and every stored campaign attempt —
+  `ResumeTarget.Pick(autosave SavedAtUnix, CampaignStore.AttemptIndex.Entries)`
+  (Model, unit-tested; finished attempts never qualify, ties go to the
+  autosave). An autosave target loads the slot; a campaign target loads the
+  attempt and launches as Continue.
 - **`Resume()`** reseeds the RNG, runs leading AI turns until control reaches a
   human (or game ends), refreshes views, then fires `HumanTurnStarted` if the
   resumed player is human (so the autosave hook runs after a load).
@@ -1593,7 +1609,10 @@ seed (no consumption count) and load reproduces it.
   fall through to procedural with the preserved seed.
 
 `SaveStore` reads/writes `user://saves/`, `user://maps/`, `user://tutorials/`,
-the map-sharing staging dirs `user://export/` / `user://import/` (see **Map
+`user://campaign_saves/` (gzipped per-level campaign attempts:
+`WriteCampaignAttempt` / `TryLoadCampaignAttempt` / `DeleteCampaignAttempt`,
+through `SaveCompression` — standard gzip, `gunzip`-readable, ~5% of the
+JSON; a plain-JSON file dropped in by hand still reads), the map-sharing staging dirs `user://export/` / `user://import/` (see **Map
 sharing**), and reads `res://tutorials/` (bundled, read-only: `Tutorial.json`
 starting map, `full_tutorial.json`, and the `instr_*.json` Instructions demos).
 Exposes `WriteAutosave`, `WriteSlot`, `WriteMapSlot` (optional `author`),
@@ -1836,13 +1855,17 @@ Spans all four layers, one-way:
 - **Model (Godot-free, unit-tested):**
   - `CampaignProgress` (`src/FourExHex.Model/CampaignProgress.cs`) — 256 `CampaignLevelStatus` (`Untried`/`Lost`/`Won`, member order load-bearing — persisted numerically). Exposes `StatusOf`, `MarkAttempted` (Untried→Lost, Won terminal), `MarkWon` (terminal), `WonCount`, `TierWonCount`, `NextUp` (lowest non-won, null when all won); statics `DifficultyForLevel` (`(Difficulty)(level / 64)`), `LabelFor`, `SeedForLevel` (reads the baked winnable-seed table `CampaignSeeds.ByLevel`), `HumanSlotForLevel(level, playerCount)` (stable integer hash mod `playerCount`); roster `PlayerCountForLevel` (3–6, weighted high; the weighted draw's 2s are re-apportioned across the four sizes in ladder order, since a 2-player start splits the board at parity from turn 1), `ActiveColorSlotsForLevel` (sorted distinct subset), `HumanColorSlotForLevel` (`= active[HumanSlotForLevel(level, count)]`). All draw from one seeded `DeterministicRng` per level (offset decorrelated from seed/terrain), fixing players and terrain forever. `ModeForLevel` derives `GameMode`: `Freeform` below Soldier tier; Soldier+ tiers each hold an exact per-mode quota of Rising Tides / Fog Of War / Viking Raiders levels via a tier-seeded shuffle sliced per mode (see the Campaign paragraph under Rising Tides). **Mark-at-launch:** starting marks Lost; winning flips to Won, which a later loss can't revert.
   - `CampaignSerializer` + `CampaignData` — JSON `{ FormatVersion, Statuses[] }`, registered on `FourExHexJsonContext` for iOS AOT. Tolerant read: short arrays pad with Untried, extras past 256 ignored, out-of-range → Untried, unknown versions throw (store catches → fresh progress).
+  - `CampaignAttempts` (`src/FourExHex.Model/CampaignAttempts.cs`) — the Godot-free half of per-level attempt storage: `CampaignAttemptKind` (`None` / `Unfinished` / `Finished`) via `Classify(LoadedSave?)` (finished ⇔ `WinnerIndex` set), `CanReplay` (the replay survived the `ReplayVersion` gate), `FileNameFor` (`level_XX`); `CampaignAttemptIndex` + `CampaignAttemptIndexSerializer` — the recency index sidecar (`{ FormatVersion, Entries[{ Level, SavedAtUnix, TurnNumber, WinnerIndex? }] }`, registered on `FourExHexJsonContext`; tolerant `FromEntries`: out-of-range levels dropped, duplicate levels keep the newest, negatives clamp; unknown versions throw → store rebuilds); `ResumeTarget.Pick` (see **Save / load**).
 - **ViewMath (floats OK, unit-tested):** `CampaignGridMath` (`src/FourExHex.ViewMath/CampaignGridMath.cs`) — pointy-top honeycomb geometry: `CellCenter` (odd rows shift half a step, 0.75×height pitch), `BlockSize`, `HitTest` (exact point-in-hexagon). Drives both draw and tap.
+- **Controller (Godot-free, unit-tested):** `CampaignSheetActions.For(kind, canReplay)` — the confirm sheet's action set, primary first: none → Play; unfinished → Continue, Restart; finished → Watch Replay, Restart (Restart alone when the replay was dropped). `RestartNeedsConfirm` is true only for an unfinished attempt.
 - **Scripts (Godot view layer, test-excluded):**
-  - `CampaignStore` (`scripts/CampaignStore.cs`) — static persistence to the `user://campaign.json` **sidecar** (independent of game saves). Mirrors `UserSettings`: lazy load, atomic tmp+rename write per status transition, `GD.PushWarning` + fresh fallback on corruption. `PrepareLaunch(level)` sets `GameSettings.CampaignLevel` + `MasterSeed` and marks-attempted. Does **not** write the roster: `Main` builds it via `Player.BuildCampaignRoster(level)` — active color slots, human at `HumanColorSlotForLevel(level)` with tier difficulty, rest Computer/Soldier. Keeping the roster out of `GameSettings.PlayerKinds` avoids clobbering the freeform default.
-  - `CampaignPanel` (`scripts/CampaignPanel.cs`) — fixed header (back, `won / 256`, progress bar) over a `ScrollContainer` of four tier sections. Each tier is **one** custom-drawn `TierGrid` (64 hexes in `_Draw` via `CampaignGridMath`, taps in `_GuiInput` — `MouseFilter.Pass` and no `AcceptEvent`, with `TapSlopDetector` splitting a level tap from a scroll drag so the ladder still pans when the finger starts on a hex); 8↔16 column reflow is a rebuild. Styling: green fill = won, red outline = lost, gray outline = untried.
-  - `MainMenuScene` — campaign panel is the third toggled panel, rebuilt on orientation flip. Tapping a hex opens the shared `MapInfoSheet` (via `CampaignConfirmSheet.Create`) whose thumbnail previews the roster and "playing as &lt;Color&gt;" line is tinted via `HumanColorSlotForLevel`. Play calls `CampaignStore.PrepareLaunch`, changes to `main.tscn`. One-shot static `MainMenuScene.OpenCampaignOnArrival` opens straight to the campaign screen on return.
+  - `CampaignStore` (`scripts/CampaignStore.cs`) — static persistence to the `user://campaign.json` **sidecar** (independent of game saves). Mirrors `UserSettings`: lazy load, atomic tmp+rename write per status transition, `GD.PushWarning` + fresh fallback on corruption. `PrepareLaunch(level)` sets `GameSettings.CampaignLevel` + `MasterSeed`, discards the level's stored attempt, clears any pending load / watch request, and marks-attempted. Does **not** write the roster: `Main` builds it via `Player.BuildCampaignRoster(level)` — active color slots, human at `HumanColorSlotForLevel(level)` with tier difficulty, rest Computer/Soldier. Keeping the roster out of `GameSettings.PlayerKinds` avoids clobbering the freeform default.
 
-**Win-flow call path.** `Main._Ready` reads `GameSettings.CampaignLevel` into `_campaignLevel`, wires the `HudView` campaign events. On `GameController.GameEnded`, `Main.OnGameEndedRecordCampaignResult` marks Won iff the winner is the human (else launch-time Lost stands) — **before** the controller's trailing `RefreshViews`, so the overlay reads updated totals. `HudView.Refresh` shows the **campaign victory overlay** with **Next unbeaten level** (`Main.LaunchNextUnbeatenCampaignLevel` → `PrepareLaunch(NextUp)`) and **Back to campaign** (`OpenCampaignOnArrival`, then `AbandonAndReturnToMenu`). AI win shows the standard overlay. The campaign overlay is a Main-facing extension of `HudView`, **not** part of the `IHudView` contract.
+    **Stored attempts.** Every level keeps its most recent game as `user://campaign_saves/level_XX.json.gz` — the normal save payload (with `CampaignLevel` and, once ended, `WinnerIndex`) gzipped by `SaveCompression`, so all 256 levels fit in a few MB with no pruning. `RecordAttempt` writes the file then the index (`user://campaign_attempts.json`, `AttemptIndex`); `LoadAttempt` reads the file (the authority — a failed read is a warning, "none", and drops the index entry); `DiscardAttempt` removes both. The index is a cache for the landing Resume pick; missing or unreadable, it is rebuilt by inflating each file once. `Main` writes the attempt on every human turn start (in place of the `autosave` slot) and once at `GameEnded` with the winner (`OnGameEndedRecordCampaignAttempt`, one-shot; skipped in replay playback and watch sessions).
+  - `CampaignPanel` (`scripts/CampaignPanel.cs`) — fixed header (back, `won / 256`, progress bar) over a `ScrollContainer` of four tier sections. Each tier is **one** custom-drawn `TierGrid` (64 hexes in `_Draw` via `CampaignGridMath`, taps in `_GuiInput` — `MouseFilter.Pass` and no `AcceptEvent`, with `TapSlopDetector` splitting a level tap from a scroll drag so the ladder still pans when the finger starts on a hex); 8↔16 column reflow is a rebuild. Styling: green fill = won, red outline = lost, gray outline = untried.
+  - `MainMenuScene` — campaign panel is the third toggled panel, rebuilt on orientation flip. Tapping a hex loads the level's stored attempt (`CampaignStore.LoadAttempt`) and opens the shared `MapInfoSheet` (via `CampaignConfirmSheet.Create(level, actions)`) whose thumbnail previews the roster and "playing as &lt;Color&gt;" line is tinted via `HumanColorSlotForLevel`; the buttons come from `CampaignSheetActions` (the sheet takes a `SheetAction` list, primary first = Enter, Cancel its own; three or more buttons stack vertically in portrait). Play → `CampaignStore.PrepareLaunch` + `main.tscn`. Continue → `LoadRequest.Pending = attempt`, `GameSettings.CampaignLevel` + `MasterSeed` from the level, no `AdoptRosterFrom`. Watch Replay → the same plus `LoadRequest.WatchReplay`. Restart → a per-use `ConfirmModal` first when the attempt is unfinished (registered in the system-back and Escape ladders), then `PrepareLaunch`. One-shot static `MainMenuScene.OpenCampaignOnArrival` opens straight to the campaign screen on return. Instrumented under `Log.LogCategory.Campaign` (`campaign sheet level XX state=… actions=[…]`, `… -> play|continue|replay|restart|restart-confirm|cancel`, `Resume -> autosave|campaign level XX|none`).
+
+**Win-flow call path.** `Main._Ready` reads `GameSettings.CampaignLevel` into `_campaignLevel`, wires the `HudView` campaign events. On `GameController.GameEnded`, `Main.OnGameEndedRecordCampaignResult` marks Won iff the winner is the human (else launch-time Lost stands) — **before** the controller's trailing `RefreshViews`, so the overlay reads updated totals. `HudView.Refresh` shows the **campaign victory overlay** with **Watch Replay** and **Back to campaign** (`OpenCampaignOnArrival`, then `AbandonAndReturnToMenu`). AI win shows the standard overlay. The campaign overlay is a Main-facing extension of `HudView`, **not** part of the `IHudView` contract.
 
 ## Achievements
 
