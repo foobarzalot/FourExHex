@@ -38,7 +38,8 @@ public static class CampaignStore
     private static readonly SaveStore Saves = new();
 
     /// <summary>The loaded (or fresh) campaign progress. Mutate only via
-    /// <see cref="MarkAttempted"/> / <see cref="MarkWon"/> so changes hit disk.</summary>
+    /// <see cref="MarkUnderway"/> / <see cref="MarkLost"/> / <see cref="MarkWon"/>
+    /// so changes hit disk.</summary>
     public static CampaignProgress Progress
     {
         get
@@ -48,14 +49,25 @@ public static class CampaignStore
         }
     }
 
-    /// <summary>Mark a level attempted (Untried → Lost, Won terminal) and
-    /// persist if anything changed. Called at campaign-level launch.</summary>
-    public static void MarkAttempted(int level)
+    /// <summary>Mark a level launched (Untried | Lost → Underway, Won
+    /// terminal) and persist if anything changed. Called at campaign-level launch.</summary>
+    public static void MarkUnderway(int level)
     {
         EnsureLoaded();
-        if (!_progress!.MarkAttempted(level)) return;
+        if (!_progress!.MarkUnderway(level)) return;
         Log.Info(Log.LogCategory.Campaign,
-            $"CampaignStore: level {CampaignProgress.LabelFor(level)} marked attempted (lost until won)");
+            $"CampaignStore: level {CampaignProgress.LabelFor(level)} marked underway");
+        Save();
+    }
+
+    /// <summary>Mark a level's game ended without a human win (Untried |
+    /// Underway → Lost, Won terminal) and persist if anything changed.</summary>
+    public static void MarkLost(int level)
+    {
+        EnsureLoaded();
+        if (!_progress!.MarkLost(level)) return;
+        Log.Info(Log.LogCategory.Campaign,
+            $"CampaignStore: level {CampaignProgress.LabelFor(level)} marked LOST");
         Save();
     }
 
@@ -86,7 +98,7 @@ public static class CampaignStore
         // sheet's Restart, after its own confirm when that attempt was
         // unfinished).
         DiscardAttempt(level);
-        MarkAttempted(level);
+        MarkUnderway(level);
         Log.Info(Log.LogCategory.Campaign,
             $"CampaignStore: launching level {CampaignProgress.LabelFor(level)} " +
             $"(seed {GameSettings.MasterSeed}, {playerCount} players, human slot {humanSlot} " +
@@ -283,6 +295,16 @@ public static class CampaignStore
         catch (System.Exception ex)
         {
             GD.PushWarning($"Failed to load campaign progress: {ex.Message}");
+        }
+        // The two sidecars must agree: a Lost level with an unfinished
+        // attempt stored is Underway (repairs files written before Underway
+        // existed, which marked every launch Lost).
+        int reconciled = _progress!.ReconcileWithAttempts(AttemptIndex.Entries);
+        if (reconciled > 0)
+        {
+            Log.Info(Log.LogCategory.Campaign,
+                $"CampaignStore: reconciled {reconciled} lost level(s) with unfinished attempts -> underway");
+            Save();
         }
     }
 

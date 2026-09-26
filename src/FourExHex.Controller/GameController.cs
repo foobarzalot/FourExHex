@@ -61,6 +61,15 @@ public class GameController
     public event Action? GameEnded;
 
     /// <summary>
+    /// Fired the moment a human player's last capital falls (the defeat
+    /// overlay is raised), with that player's id. Distinct from
+    /// <see cref="GameEnded"/>: the remaining players may play on. Fires
+    /// during replay playback too; subscribers that persist state check
+    /// <see cref="IsReplayMode"/>.
+    /// </summary>
+    public event Action<PlayerId>? HumanEliminated;
+
+    /// <summary>
     /// Fired each time <see cref="BeginReplay"/> playback finishes (beat
     /// log exhausted, game-over reached, or playback otherwise ended).
     /// The Instructions demo player subscribes to loop its animation by
@@ -159,7 +168,8 @@ public class GameController
             isAutomating: () => _automating,
             isAutomateExhausted: () => _automateExhausted,
             automateSilentMode: _automateIsInstantMode,
-            aiPacer: _aiPacer);
+            aiPacer: _aiPacer,
+            onHumanEliminated: id => HumanEliminated?.Invoke(id));
         _recorder = new ReplayRecorder(
             state: state,
             session: session,

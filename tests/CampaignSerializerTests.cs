@@ -19,7 +19,8 @@ public class CampaignSerializerTests
     {
         var p = new CampaignProgress();
         p.MarkWon(0);
-        p.MarkAttempted(1);
+        p.MarkLost(1);
+        p.MarkUnderway(3);
         p.MarkWon(64);
         p.MarkWon(255);
 
@@ -29,6 +30,7 @@ public class CampaignSerializerTests
         Assert.Equal(CampaignLevelStatus.Won, loaded.StatusOf(0));
         Assert.Equal(CampaignLevelStatus.Lost, loaded.StatusOf(1));
         Assert.Equal(CampaignLevelStatus.Untried, loaded.StatusOf(2));
+        Assert.Equal(CampaignLevelStatus.Underway, loaded.StatusOf(3));
         Assert.Equal(CampaignLevelStatus.Won, loaded.StatusOf(64));
         Assert.Equal(CampaignLevelStatus.Won, loaded.StatusOf(255));
         Assert.Equal(3, loaded.WonCount);
@@ -106,12 +108,15 @@ public class CampaignSerializerTests
     [Fact]
     public void Deserialize_OutOfRangeStatusValue_BecomesUntried()
     {
-        string json = "{ \"FormatVersion\": 1, \"Statuses\": [9, -3, 2] }";
+        // 3 is Underway (the highest legal value); 4 and beyond are not.
+        string json = "{ \"FormatVersion\": 1, \"Statuses\": [9, -3, 2, 3, 4] }";
 
         CampaignProgress loaded = CampaignSerializer.Deserialize(json);
 
         Assert.Equal(CampaignLevelStatus.Untried, loaded.StatusOf(0));
         Assert.Equal(CampaignLevelStatus.Untried, loaded.StatusOf(1));
         Assert.Equal(CampaignLevelStatus.Won, loaded.StatusOf(2));
+        Assert.Equal(CampaignLevelStatus.Underway, loaded.StatusOf(3));
+        Assert.Equal(CampaignLevelStatus.Untried, loaded.StatusOf(4));
     }
 }

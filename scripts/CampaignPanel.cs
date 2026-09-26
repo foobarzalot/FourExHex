@@ -380,6 +380,7 @@ public partial class CampaignPanel : Panel
             CampaignProgress progress = CampaignStore.Progress;
             Font font = GetThemeDefaultFont();
             int fontSize = Mathf.RoundToInt(18f * HexW / BaseHexW);
+            int wonCount = 0, lostCount = 0, underwayCount = 0, untriedCount = 0;
 
             for (int i = 0; i < CampaignProgress.TierSize; i++)
             {
@@ -389,16 +390,30 @@ public partial class CampaignPanel : Panel
 
                 // Status alone drives styling; no special outline for the
                 // next-up level.
-                (Color fill, Color outline, Color ink, float outlineWidth) =
-                    progress.StatusOf(level) switch
+                CampaignLevelStatus status = progress.StatusOf(level);
+                (Color fill, Color outline, Color ink, float outlineWidth) = status switch
                 {
                     CampaignLevelStatus.Won => (WonFill, WonFill, UiPalette.Ink, 1.5f),
                     CampaignLevelStatus.Lost => (CellFill, LostOutline, LostOutline, 1.5f),
+                    // Underway: green outline over the plain cell, plus the
+                    // lower half filled green below — "half way to won".
+                    CampaignLevelStatus.Underway => (CellFill, WonFill, UiPalette.Ink, 1.5f),
                     _ => (CellFill, UntriedOutline, UntriedInk, 1.5f),
                 };
+                switch (status)
+                {
+                    case CampaignLevelStatus.Won: wonCount++; break;
+                    case CampaignLevelStatus.Lost: lostCount++; break;
+                    case CampaignLevelStatus.Underway: underwayCount++; break;
+                    default: untriedCount++; break;
+                }
 
                 Vector2[] points = HexPoints(cx, cy);
                 DrawColoredPolygon(points, fill);
+                if (status == CampaignLevelStatus.Underway)
+                {
+                    DrawColoredPolygon(LowerHalfOf(points, cy), WonFill);
+                }
                 // Closed outline: DrawPolyline needs the first point again.
                 var loop = new Vector2[points.Length + 1];
                 points.CopyTo(loop, 0);
@@ -426,6 +441,9 @@ public partial class CampaignPanel : Panel
                 DrawString(font, new Vector2(cx - HexW / 2f, baseline), label,
                     HorizontalAlignment.Center, HexW, fontSize, ink);
             }
+            Log.Debug(Log.LogCategory.Campaign,
+                $"[campaign] tier {_tier} draw won={wonCount} lost={lostCount} " +
+                $"underway={underwayCount} untried={untriedCount}");
         }
 
         public override void _GuiInput(InputEvent @event)
@@ -462,6 +480,19 @@ public partial class CampaignPanel : Panel
 
         /// <summary>Pointy-top hexagon vertices around a center — the
         /// same shape <see cref="CampaignGridMath.HitTest"/> tests.</summary>
+        /// <summary>The hex's lower half (below its centre line) for the
+        /// Underway half fill — <see cref="CampaignGridMath.LowerHalf"/>
+        /// over tuples, back to the Vector2s DrawColoredPolygon wants.</summary>
+        private static Vector2[] LowerHalfOf(Vector2[] points, float midY)
+        {
+            var tuples = new (float x, float y)[points.Length];
+            for (int i = 0; i < points.Length; i++) tuples[i] = (points[i].X, points[i].Y);
+            (float x, float y)[] half = CampaignGridMath.LowerHalf(tuples, midY);
+            var result = new Vector2[half.Length];
+            for (int i = 0; i < half.Length; i++) result[i] = new Vector2(half[i].x, half[i].y);
+            return result;
+        }
+
         private Vector2[] HexPoints(float cx, float cy) => new[]
         {
             new Vector2(cx, cy - HexH / 2f),

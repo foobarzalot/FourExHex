@@ -50,7 +50,7 @@ public static class CampaignSerializer
 /// <summary>
 /// Wire DTO for <see cref="CampaignSerializer"/>: a version stamp plus
 /// 256 numeric <see cref="CampaignLevelStatus"/> values (0=Untried,
-/// 1=Lost, 2=Won — enum member order is load-bearing).
+/// 1=Lost, 2=Won, 3=Underway — enum member order is load-bearing).
 /// </summary>
 public sealed class CampaignData
 {

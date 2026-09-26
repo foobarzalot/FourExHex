@@ -353,6 +353,7 @@ public static class StringKeys
     public const string CampaignStatusWon = "campaign.status.won";
     public const string CampaignStatusLost = "campaign.status.lost";
     public const string CampaignStatusUnattempted = "campaign.status.unattempted";
+    public const string CampaignStatusUnderway = "campaign.status.underway";
     public const string CampaignBlurbFreeform = "campaign.blurb.freeform";
     public const string CampaignRestartTitle = "campaign.restart_title";
     public const string CampaignRestartBody = "campaign.restart_body";

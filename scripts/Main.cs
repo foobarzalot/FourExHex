@@ -38,6 +38,8 @@ public partial class Main : Node2D
     private bool _watchReplay;
     /// <summary>One-shot latch for the game-end attempt write.</summary>
     private bool _finalAttemptWritten;
+    /// <summary>One-shot latch for the human-elimination attempt write.</summary>
+    private bool _eliminationAttemptWritten;
     private SaveNameModal? _saveModal;
     private SlotPickerDialog? _loadDialog;
     private ConfirmModal? _restartConfirmModal;
@@ -548,6 +550,10 @@ public partial class Main : Node2D
             // Campaign attempt: store the finished game (with its winner)
             // so the level's hex can offer Watch Replay next time.
             _controller.GameEnded += OnGameEndedRecordCampaignAttempt;
+            // The human's own game ends when their last capital falls, even
+            // if the AIs play on: record the loss and store the attempt as
+            // finished then, not only at GameEnded.
+            _controller.HumanEliminated += OnHumanEliminatedRecordCampaignLoss;
         }
 
         if (diagnosticMode)
@@ -786,12 +792,13 @@ public partial class Main : Node2D
     }
 
     /// <summary>
-    /// GameEnded hook for campaign games: if the human won,
-    /// flip the level to Won (terminal) and persist. Any other outcome —
-    /// AI winner, turn-cap stasis — leaves the mark-at-launch Lost status
-    /// standing. No-op for freeform games (_campaignLevel null). BeginReplay
-    /// re-fires GameEnded at the end of playback; MarkWon is idempotent so
-    /// the re-run is harmless.
+    /// GameEnded hook for campaign games: a human win flips the level to
+    /// Won (terminal); any other ending — AI winner, turn-cap stasis,
+    /// viking wipeout — marks it Lost. No-op for freeform games
+    /// (_campaignLevel null). BeginReplay re-fires GameEnded at the end of
+    /// playback: MarkWon is idempotent, and the Lost mark is skipped in
+    /// replay playback and watch sessions so a re-watched ending changes
+    /// nothing.
     /// </summary>
     private void OnGameEndedRecordCampaignResult()
     {
@@ -815,12 +822,18 @@ public partial class Main : Node2D
                     TierWonCount: progress.TierWonCount(tier)));
             }
         }
+        else if (_watchReplay || _controller.IsReplayMode)
+        {
+            Log.Debug(Log.LogCategory.Campaign,
+                $"Main: campaign level {CampaignProgress.LabelFor(level)} lost mark " +
+                $"skipped (watch={_watchReplay}, replay={_controller.IsReplayMode})");
+        }
         else
         {
             Log.Info(Log.LogCategory.Campaign,
                 $"Main: campaign level {CampaignProgress.LabelFor(level)} ended " +
-                $"without a human win (winner: {winner?.Name ?? "none"}) — stays " +
-                $"{CampaignStore.Progress.StatusOf(level)}");
+                $"without a human win (winner: {winner?.Name ?? "none"}) — marking lost");
+            CampaignStore.MarkLost(level);
         }
     }
 
@@ -878,6 +891,32 @@ public partial class Main : Node2D
         {
             GD.PushError($"Campaign attempt save failed: {ex.Message}");
         }
+    }
+
+    /// <summary>
+    /// HumanEliminated hook for campaign games: the player's game is over
+    /// the moment their last capital falls, whatever the AIs do next — mark
+    /// the level Lost and store the attempt as finished with no winner
+    /// (a later GameEnded write replaces it with the real winner). Once per
+    /// game; never in replay playback or a watch session.
+    /// </summary>
+    private void OnHumanEliminatedRecordCampaignLoss(PlayerId eliminated)
+    {
+        if (_campaignLevel is not int level) return;
+        if (_watchReplay || _controller.IsReplayMode || _eliminationAttemptWritten)
+        {
+            Log.Debug(Log.LogCategory.Campaign,
+                $"Main: campaign level {CampaignProgress.LabelFor(level)} elimination " +
+                $"skipped (watch={_watchReplay}, replay={_controller.IsReplayMode}, " +
+                $"written={_eliminationAttemptWritten})");
+            return;
+        }
+        _eliminationAttemptWritten = true;
+        Log.Info(Log.LogCategory.Campaign,
+            $"Main: campaign level {CampaignProgress.LabelFor(level)} human eliminated " +
+            $"({eliminated}) — marking lost");
+        CampaignStore.MarkLost(level);
+        WriteCampaignAttempt(level, winnerIndex: -1);
     }
 
     /// <summary>

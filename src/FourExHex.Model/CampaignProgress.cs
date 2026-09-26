@@ -8,21 +8,29 @@ using System.Collections.Generic;
 /// load-bearing: statuses persist numerically in the campaign sidecar
 /// file (<c>user://campaign.json</c>) — same convention as
 /// <c>PlaybackSpeed</c> in <c>user://settings.json</c> — so
-/// Untried=0, Lost=1, Won=2 must stay fixed.
+/// Untried=0, Lost=1, Won=2, Underway=3 must stay fixed (a new value is
+/// appended, never inserted).
 /// </summary>
 public enum CampaignLevelStatus : byte
 {
+    /// <summary>Never launched.</summary>
     Untried = 0,
+    /// <summary>A game on this level reached an ending that was not a human win.</summary>
     Lost = 1,
+    /// <summary>A human win. Terminal.</summary>
     Won = 2,
+    /// <summary>Launched, no ending reached yet — exited mid-game or currently playing.</summary>
+    Underway = 3,
 }
 
 /// <summary>
 /// The campaign ladder model: 256 levels labeled <c>00</c>–<c>FF</c>, in
 /// four tiers of 64 mapped onto <see cref="Difficulty"/> (Recruit 00–3F …
 /// Commander C0–FF). Pure model — Godot-free, persisted via
-/// <see cref="CampaignSerializer"/>. Starting a level marks it Lost
-/// ("attempted, never won"); winning flips it to Won, which is terminal.
+/// <see cref="CampaignSerializer"/>. The status describes the level's
+/// latest attempt: launching puts it <see cref="CampaignLevelStatus.Underway"/>
+/// (from Untried or Lost), an ending without a human win marks it Lost,
+/// a human win marks it Won, which is terminal.
 /// </summary>
 public sealed class CampaignProgress
 {
@@ -54,6 +62,7 @@ public sealed class CampaignProgress
             {
                 (int)CampaignLevelStatus.Lost => CampaignLevelStatus.Lost,
                 (int)CampaignLevelStatus.Won => CampaignLevelStatus.Won,
+                (int)CampaignLevelStatus.Underway => CampaignLevelStatus.Underway,
                 _ => CampaignLevelStatus.Untried,
             };
         }
@@ -66,13 +75,45 @@ public sealed class CampaignProgress
         return _statuses[level];
     }
 
-    /// <summary>Mark a level attempted (Untried → Lost). Won is terminal
-    /// and stays Won. Returns true iff the status changed (caller saves).</summary>
-    public bool MarkAttempted(int level)
+    /// <summary>Mark a level launched (Untried | Lost → Underway). Won is
+    /// terminal and stays Won. Returns true iff the status changed (caller saves).</summary>
+    public bool MarkUnderway(int level) =>
+        Transition(level, CampaignLevelStatus.Underway, CampaignLevelStatus.Untried, CampaignLevelStatus.Lost);
+
+    /// <summary>Mark a level's game ended without a human win
+    /// (Untried | Underway → Lost). Won is terminal and stays Won. Returns
+    /// true iff the status changed (caller saves).</summary>
+    public bool MarkLost(int level) =>
+        Transition(level, CampaignLevelStatus.Lost, CampaignLevelStatus.Untried, CampaignLevelStatus.Underway);
+
+    /// <summary>
+    /// Bring the ladder in line with the stored attempts: a level marked
+    /// <see cref="CampaignLevelStatus.Lost"/> that has an <em>unfinished</em>
+    /// attempt stored is really <see cref="CampaignLevelStatus.Underway"/>
+    /// (a file written before Underway existed marked every launch Lost).
+    /// Won is terminal. Returns the number of levels changed (caller saves
+    /// when non-zero).
+    /// </summary>
+    public int ReconcileWithAttempts(IEnumerable<CampaignAttemptEntry> attempts)
+    {
+        int changed = 0;
+        foreach (CampaignAttemptEntry attempt in attempts)
+        {
+            if (attempt.IsFinished) continue;
+            if (attempt.Level < 0 || attempt.Level >= LevelCount) continue;
+            if (_statuses[attempt.Level] != CampaignLevelStatus.Lost) continue;
+            _statuses[attempt.Level] = CampaignLevelStatus.Underway;
+            changed++;
+        }
+        return changed;
+    }
+
+    private bool Transition(int level, CampaignLevelStatus to, CampaignLevelStatus fromA, CampaignLevelStatus fromB)
     {
         ValidateLevel(level);
-        if (_statuses[level] != CampaignLevelStatus.Untried) return false;
-        _statuses[level] = CampaignLevelStatus.Lost;
+        CampaignLevelStatus current = _statuses[level];
+        if (current != fromA && current != fromB) return false;
+        _statuses[level] = to;
         return true;
     }
 

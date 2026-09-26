@@ -130,4 +130,40 @@ public class CampaignGridMathTests
         Assert.Equal(8, CampaignGridMath.HitTest(cx, topOfRow1 + 1f, 64, 8, W, H, G));
         Assert.Null(CampaignGridMath.HitTest(cx, topOfRow1 - 1f, 64, 8, W, H, G));
     }
+
+    // ── LowerHalf: the Underway hex's half fill ─────────────────
+
+    private static (float x, float y)[] PointyHex(float cx, float cy) => new[]
+    {
+        (cx, cy - H / 2f),
+        (cx + W / 2f, cy - H / 4f),
+        (cx + W / 2f, cy + H / 4f),
+        (cx, cy + H / 2f),
+        (cx - W / 2f, cy + H / 4f),
+        (cx - W / 2f, cy - H / 4f),
+    };
+
+    [Fact]
+    public void LowerHalf_PointyHexAtCentre_IsFivePointsCutAtSideMidpoints()
+    {
+        (float x, float y)[] half = CampaignGridMath.LowerHalf(PointyHex(100f, 200f), 200f);
+
+        Assert.Equal(5, half.Length);
+        Assert.All(half, p => Assert.True(p.y >= 200f - 1e-3f));
+        Assert.Contains((100f + W / 2f, 200f), half);
+        Assert.Contains((100f - W / 2f, 200f), half);
+        Assert.Contains((100f, 200f + H / 2f), half);
+        Assert.DoesNotContain((100f, 200f - H / 2f), half);
+    }
+
+    [Fact]
+    public void LowerHalf_EntirelyAbove_IsEmpty() =>
+        Assert.Empty(CampaignGridMath.LowerHalf(PointyHex(0f, 0f), 100f));
+
+    [Fact]
+    public void LowerHalf_EntirelyBelow_IsUnchanged()
+    {
+        (float x, float y)[] hex = PointyHex(0f, 0f);
+        Assert.Equal(hex, CampaignGridMath.LowerHalf(hex, -100f));
+    }
 }

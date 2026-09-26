@@ -1420,9 +1420,12 @@ public partial class MainMenuScene : Control
                 CampaignSheetAction.WatchReplay => new MapInfoSheet.SheetAction(
                     Strings.Get(StringKeys.HudButtonReplay),
                     () => ContinueCampaignAttempt(level, attempt!, watchReplay: true)),
+                // A restart that confirms first stacks its modal over the
+                // still-open sheet, so Cancel lands back on the sheet.
                 CampaignSheetAction.Restart => new MapInfoSheet.SheetAction(
                     Strings.Get(StringKeys.PauseRestart),
-                    () => RestartCampaignLevel(level, kind)),
+                    () => RestartCampaignLevel(level, kind),
+                    KeepOpen: CampaignSheetActions.RestartNeedsConfirm(kind)),
                 _ => new MapInfoSheet.SheetAction(
                     Strings.Get(StringKeys.ButtonPlay),
                     () =>
@@ -1485,13 +1488,17 @@ public partial class MainMenuScene : Control
         {
             Log.Info(Log.LogCategory.Campaign, $"MainMenu: campaign restart level {label} confirmed");
             DismissCampaignRestartConfirm();
+            _campaignSheet?.Close();
             LaunchCampaignLevel(level);
         };
         confirm.Canceled += () =>
         {
-            Log.Info(Log.LogCategory.Campaign, $"MainMenu: campaign restart level {label} cancelled");
+            // Back to the sheet, which stayed open underneath.
+            Log.Info(Log.LogCategory.Campaign, $"MainMenu: campaign restart level {label} cancelled -> sheet");
             DismissCampaignRestartConfirm();
         };
+        // Same canvas layer as the sheet; added later, so it draws on top
+        // and takes Escape / Enter first.
         AddChild(confirm);
         confirm.Open();
     }

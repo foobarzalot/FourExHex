@@ -24,6 +24,7 @@ public static class CampaignConfirmSheet
         {
             CampaignLevelStatus.Won => Strings.Get(StringKeys.CampaignStatusWon),
             CampaignLevelStatus.Lost => Strings.Get(StringKeys.CampaignStatusLost),
+            CampaignLevelStatus.Underway => Strings.Get(StringKeys.CampaignStatusUnderway),
             _ => Strings.Get(StringKeys.CampaignStatusUnattempted),
         };
         string status = Strings.Get(StringKeys.CampaignTierStatus,

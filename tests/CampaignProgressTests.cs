@@ -26,53 +26,147 @@ public class CampaignProgressTests
             i => Assert.Equal(CampaignLevelStatus.Untried, p.StatusOf(i)));
     }
 
+    // ── Launch: Untried | Lost → Underway; Won terminal ─────────
+
     [Fact]
-    public void MarkAttempted_UntriedBecomesLost()
+    public void MarkUnderway_UntriedBecomesUnderway()
     {
         var p = new CampaignProgress();
 
-        bool changed = p.MarkAttempted(5);
+        bool changed = p.MarkUnderway(5);
 
         Assert.True(changed);
-        Assert.Equal(CampaignLevelStatus.Lost, p.StatusOf(5));
+        Assert.Equal(CampaignLevelStatus.Underway, p.StatusOf(5));
     }
 
     [Fact]
-    public void MarkAttempted_LostStaysLost_ReportsNoChange()
+    public void MarkUnderway_LostBecomesUnderway()
+    {
+        // The status describes the latest attempt: relaunching a lost
+        // level puts a new game underway.
+        var p = new CampaignProgress();
+        p.MarkLost(5);
+
+        bool changed = p.MarkUnderway(5);
+
+        Assert.True(changed);
+        Assert.Equal(CampaignLevelStatus.Underway, p.StatusOf(5));
+    }
+
+    [Fact]
+    public void MarkUnderway_UnderwayReportsNoChange()
     {
         var p = new CampaignProgress();
-        p.MarkAttempted(5);
+        p.MarkUnderway(5);
 
-        bool changed = p.MarkAttempted(5);
-
-        Assert.False(changed);
-        Assert.Equal(CampaignLevelStatus.Lost, p.StatusOf(5));
+        Assert.False(p.MarkUnderway(5));
+        Assert.Equal(CampaignLevelStatus.Underway, p.StatusOf(5));
     }
 
     [Fact]
-    public void MarkAttempted_WonIsTerminal_ReplayCannotUnwin()
+    public void MarkUnderway_WonIsTerminal_ReplayCannotUnwin()
     {
         var p = new CampaignProgress();
         p.MarkWon(5);
 
-        bool changed = p.MarkAttempted(5);
+        bool changed = p.MarkUnderway(5);
 
         Assert.False(changed);
         Assert.Equal(CampaignLevelStatus.Won, p.StatusOf(5));
     }
 
+    // ── Game end without a human win: Untried | Underway → Lost ──
+
     [Fact]
-    public void MarkWon_FromUntriedAndFromLost()
+    public void MarkLost_UntriedBecomesLost()
     {
         var p = new CampaignProgress();
-        p.MarkAttempted(3);
+
+        Assert.True(p.MarkLost(5));
+        Assert.Equal(CampaignLevelStatus.Lost, p.StatusOf(5));
+    }
+
+    [Fact]
+    public void MarkLost_UnderwayBecomesLost()
+    {
+        var p = new CampaignProgress();
+        p.MarkUnderway(5);
+
+        Assert.True(p.MarkLost(5));
+        Assert.Equal(CampaignLevelStatus.Lost, p.StatusOf(5));
+    }
+
+    [Fact]
+    public void MarkLost_LostReportsNoChange()
+    {
+        var p = new CampaignProgress();
+        p.MarkLost(5);
+
+        Assert.False(p.MarkLost(5));
+        Assert.Equal(CampaignLevelStatus.Lost, p.StatusOf(5));
+    }
+
+    [Fact]
+    public void MarkLost_WonIsTerminal()
+    {
+        var p = new CampaignProgress();
+        p.MarkWon(5);
+
+        Assert.False(p.MarkLost(5));
+        Assert.Equal(CampaignLevelStatus.Won, p.StatusOf(5));
+    }
+
+    // ── Reconcile with the stored attempts ──────────────────────
+
+    [Fact]
+    public void ReconcileWithAttempts_LostWithUnfinishedAttempt_BecomesUnderway()
+    {
+        // A file written before Underway existed marked every launch Lost;
+        // a stored unfinished game proves the level is really underway.
+        var p = new CampaignProgress();
+        p.MarkLost(2);
+        p.MarkLost(3);   // finished attempt: stays Lost
+        p.MarkWon(4);    // won: terminal, even with an unfinished attempt stored
+        p.MarkLost(5);   // no attempt at all: stays Lost
+
+        int changed = p.ReconcileWithAttempts(new[]
+        {
+            new CampaignAttemptEntry(2, 100, 4, null),
+            new CampaignAttemptEntry(3, 100, 9, 1),
+            new CampaignAttemptEntry(4, 100, 2, null),
+        });
+
+        Assert.Equal(1, changed);
+        Assert.Equal(CampaignLevelStatus.Underway, p.StatusOf(2));
+        Assert.Equal(CampaignLevelStatus.Lost, p.StatusOf(3));
+        Assert.Equal(CampaignLevelStatus.Won, p.StatusOf(4));
+        Assert.Equal(CampaignLevelStatus.Lost, p.StatusOf(5));
+    }
+
+    [Fact]
+    public void ReconcileWithAttempts_NothingToFix_ReportsZero()
+    {
+        var p = new CampaignProgress();
+        p.MarkUnderway(2);
+        Assert.Equal(0, p.ReconcileWithAttempts(new[] { new CampaignAttemptEntry(2, 100, 4, null) }));
+        Assert.Equal(0, p.ReconcileWithAttempts(System.Array.Empty<CampaignAttemptEntry>()));
+    }
+
+    [Fact]
+    public void MarkWon_FromUntriedUnderwayAndLost()
+    {
+        var p = new CampaignProgress();
+        p.MarkUnderway(3);
+        p.MarkLost(5);
 
         Assert.True(p.MarkWon(3));
         Assert.True(p.MarkWon(4));
+        Assert.True(p.MarkWon(5));
 
         Assert.Equal(CampaignLevelStatus.Won, p.StatusOf(3));
         Assert.Equal(CampaignLevelStatus.Won, p.StatusOf(4));
-        Assert.Equal(2, p.WonCount);
+        Assert.Equal(CampaignLevelStatus.Won, p.StatusOf(5));
+        Assert.Equal(3, p.WonCount);
     }
 
     [Fact]
@@ -86,14 +180,16 @@ public class CampaignProgressTests
     }
 
     [Fact]
-    public void NextUp_IsLowestNonWonLevel_LostDoesNotAdvanceIt()
+    public void NextUp_IsLowestNonWonLevel_LostOrUnderwayDoesNotAdvanceIt()
     {
         var p = new CampaignProgress();
         p.MarkWon(0);
         p.MarkWon(1);
-        p.MarkAttempted(2); // lost — still the next target
+        p.MarkLost(2); // lost — still the next target
         p.MarkWon(3);
+        Assert.Equal(2, p.NextUp);
 
+        p.MarkUnderway(2); // relaunched — still the next target
         Assert.Equal(2, p.NextUp);
     }
 
@@ -177,7 +273,8 @@ public class CampaignProgressTests
         var p = new CampaignProgress();
 
         Assert.Throws<ArgumentOutOfRangeException>(() => p.StatusOf(level));
-        Assert.Throws<ArgumentOutOfRangeException>(() => p.MarkAttempted(level));
+        Assert.Throws<ArgumentOutOfRangeException>(() => p.MarkUnderway(level));
+        Assert.Throws<ArgumentOutOfRangeException>(() => p.MarkLost(level));
         Assert.Throws<ArgumentOutOfRangeException>(() => p.MarkWon(level));
         Assert.Throws<ArgumentOutOfRangeException>(() => CampaignProgress.DifficultyForLevel(level));
         Assert.Throws<ArgumentOutOfRangeException>(() => CampaignProgress.LabelFor(level));

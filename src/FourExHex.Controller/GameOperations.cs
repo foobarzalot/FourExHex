@@ -50,6 +50,7 @@ public class GameOperations
     private readonly Func<bool> _isAutomateExhausted;
     private readonly int _maxTurnNumber;
     private readonly Action _onGameEnded;
+    private readonly Action<PlayerId>? _onHumanEliminated;
     private readonly Action _onHumanTurnStarted;
     private readonly int _masterSeed;
     private readonly Func<bool> _aiSilentMode;
@@ -166,9 +167,11 @@ public class GameOperations
         Func<bool>? isAutomating = null,
         Func<bool>? isAutomateExhausted = null,
         Func<bool>? automateSilentMode = null,
-        IAiPacer? aiPacer = null)
+        IAiPacer? aiPacer = null,
+        Action<PlayerId>? onHumanEliminated = null)
     {
         _aiPacer = aiPacer ?? new SynchronousAiPacer();
+        _onHumanEliminated = onHumanEliminated;
         _state = state;
         _session = session;
         _map = map;
@@ -2107,6 +2110,10 @@ public class GameOperations
                 && (!_recordingMode || defeatedIndex == 0))
             {
                 _session.PendingDefeatScreen = c;
+                // Raises GameController.HumanEliminated: the campaign
+                // records the loss here, since the AIs may play on for
+                // many turns before GameEnded.
+                _onHumanEliminated?.Invoke(c);
                 // The human's loss cue plays at the moment of elimination;
                 // the defeat overlay itself waits behind the pause. Replay
                 // never pauses mid-game — playback holds every overlay and

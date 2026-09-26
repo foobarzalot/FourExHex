@@ -34,8 +34,11 @@ public sealed partial class MapInfoSheet : CanvasLayer
     /// <summary>One human player to surface in the "playing as" block.</summary>
     public readonly record struct HumanIdentity(string Name, Color Color);
 
-    /// <summary>One action button: the sheet closes, then runs <see cref="OnPressed"/>.</summary>
-    public readonly record struct SheetAction(string Label, Action OnPressed);
+    /// <summary>One action button: the sheet closes, then runs
+    /// <see cref="OnPressed"/> — unless <see cref="KeepOpen"/>, for an action
+    /// that stacks its own confirm over the still-visible sheet and closes
+    /// it (or not) itself.</summary>
+    public readonly record struct SheetAction(string Label, Action OnPressed, bool KeepOpen = false);
 
     private const float MaxLong = 920f;
     private const float MaxShort = 520f;
@@ -369,8 +372,9 @@ public sealed partial class MapInfoSheet : CanvasLayer
 
     private void Run(SheetAction action)
     {
-        Close();
-        Log.Debug(Log.LogCategory.Display, $"MapInfoSheet action \"{action.Label}\"");
+        if (!action.KeepOpen) Close();
+        Log.Debug(Log.LogCategory.Display,
+            $"MapInfoSheet action \"{action.Label}\" (keepOpen={action.KeepOpen})");
         action.OnPressed();
     }
 

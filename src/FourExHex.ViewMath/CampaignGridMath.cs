@@ -73,4 +73,31 @@ public static class CampaignGridMath
         float v = Math.Abs(dy) / (hexHeight / 2f);
         return u <= 1f && v <= 1f - u / 2f;
     }
+
+    /// <summary>
+    /// The part of a convex polygon on or below the horizontal line
+    /// <c>y = midY</c> (screen space, y down) — the campaign ladder's
+    /// half fill for an Underway hex. Sutherland–Hodgman against the one
+    /// half-plane: vertices below the line are kept, and each edge that
+    /// crosses it contributes its intersection point. Empty when the
+    /// polygon lies entirely above; the polygon itself when entirely below.
+    /// </summary>
+    public static (float x, float y)[] LowerHalf((float x, float y)[] polygon, float midY)
+    {
+        var result = new System.Collections.Generic.List<(float x, float y)>(polygon.Length + 2);
+        for (int i = 0; i < polygon.Length; i++)
+        {
+            (float x, float y) a = polygon[i];
+            (float x, float y) b = polygon[(i + 1) % polygon.Length];
+            bool aIn = a.y >= midY;
+            bool bIn = b.y >= midY;
+            if (aIn) result.Add(a);
+            if (aIn != bIn)
+            {
+                float t = (midY - a.y) / (b.y - a.y);
+                result.Add((a.x + (b.x - a.x) * t, midY));
+            }
+        }
+        return result.ToArray();
+    }
 }
