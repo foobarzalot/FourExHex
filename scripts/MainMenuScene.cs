@@ -1395,22 +1395,60 @@ public partial class MainMenuScene : Control
     /// (level number, tier, current status, board preview) whose actions
     /// follow the level's stored attempt — Play (none), Continue + Restart
     /// (unfinished), Watch Replay + Restart (finished); see
-    /// <see cref="CampaignSheetActions"/>. A fresh modal per tap — content
-    /// is level-specific and the modal family builds its UI once in _Ready.</summary>
+    /// <see cref="CampaignSheetActions"/>. Swipes and the arrow keys step
+    /// the sheet to the neighboring levels. A fresh modal per tap — the
+    /// modal family builds its UI once in _Ready.</summary>
     private void OnCampaignLevelTapped(int level)
+    {
+        // The level whose page the sheet is showing; pages built for any
+        // other level are peeks until a step lands on them.
+        int shown = level;
+        // Attempt state per page built, so a landing logs without a re-read.
+        var states = new System.Collections.Generic.Dictionary<int, (CampaignAttemptKind Kind, bool CanReplay)>();
+        MapInfoSheet sheet = CampaignConfirmSheet.Create(
+            level,
+            actionsFor: target =>
+            {
+                var buttons = BuildCampaignSheetActions(target, out CampaignAttemptKind kind, out bool canReplay);
+                states[target] = (kind, canReplay);
+                LogCampaignSheetState(target, peek: target != shown, kind, canReplay);
+                return buttons;
+            },
+            // A restart confirm stacked over the sheet owns the input.
+            canPage: () => _campaignRestartConfirm is not { IsOpen: true },
+            stepped: (from, to, via) =>
+            {
+                shown = to;
+                Log.Info(Log.LogCategory.Campaign,
+                    $"MainMenu: campaign sheet level {CampaignProgress.LabelFor(from)} -> " +
+                    $"step {(to > from ? "next" : "prev")} via {via}");
+                (CampaignAttemptKind kind, bool canReplay) = states[to];
+                LogCampaignSheetState(to, peek: false, kind, canReplay);
+            });
+        _campaignSheet = sheet;
+        sheet.Canceled += () =>
+        {
+            Log.Info(Log.LogCategory.Campaign,
+                $"MainMenu: campaign sheet level {CampaignProgress.LabelFor(sheet.PageIndex)} -> cancel");
+            _campaignSheet = null;
+            sheet.QueueFree();
+        };
+        AddChild(sheet);
+        sheet.Open();
+    }
+
+    /// <summary>A level's sheet buttons, from its stored attempt.</summary>
+    private System.Collections.Generic.IReadOnlyList<MapInfoSheet.SheetAction> BuildCampaignSheetActions(
+        int level, out CampaignAttemptKind attemptKind, out bool canReplay)
     {
         string label = CampaignProgress.LabelFor(level);
         LoadedSave? attempt = CampaignStore.LoadAttempt(level);
         CampaignAttemptKind kind = CampaignAttempts.Classify(attempt);
-        bool canReplay = attempt != null && CampaignAttempts.CanReplay(attempt);
-        System.Collections.Generic.IReadOnlyList<CampaignSheetAction> actions =
-            CampaignSheetActions.For(kind, canReplay);
-        Log.Info(Log.LogCategory.Campaign,
-            $"MainMenu: campaign sheet level {label} state={kind} " +
-            $"actions=[{string.Join(",", actions)}]");
+        attemptKind = kind;
+        canReplay = attempt != null && CampaignAttempts.CanReplay(attempt);
 
         var buttons = new System.Collections.Generic.List<MapInfoSheet.SheetAction>();
-        foreach (CampaignSheetAction action in actions)
+        foreach (CampaignSheetAction action in CampaignSheetActions.For(kind, canReplay))
         {
             buttons.Add(action switch
             {
@@ -1435,17 +1473,20 @@ public partial class MainMenuScene : Control
                     }),
             });
         }
+        return buttons;
+    }
 
-        MapInfoSheet sheet = CampaignConfirmSheet.Create(level, buttons);
-        _campaignSheet = sheet;
-        sheet.Canceled += () =>
-        {
-            Log.Info(Log.LogCategory.Campaign, $"MainMenu: campaign sheet level {label} -> cancel");
-            _campaignSheet = null;
-            sheet.QueueFree();
-        };
-        AddChild(sheet);
-        sheet.Open();
+    // The landed level's state line; a page built only to peek beside the
+    // current one logs at Debug.
+    [System.Diagnostics.Conditional("FOUREXHEX_LOGGING")]
+    private static void LogCampaignSheetState(
+        int level, bool peek, CampaignAttemptKind kind, bool canReplay)
+    {
+        string line =
+            $"MainMenu: campaign sheet level {CampaignProgress.LabelFor(level)} state={kind} " +
+            $"actions=[{string.Join(",", CampaignSheetActions.For(kind, canReplay))}]";
+        if (peek) Log.Debug(Log.LogCategory.Campaign, line + " (peek)");
+        else Log.Info(Log.LogCategory.Campaign, line);
     }
 
     /// <summary>Open a stored attempt: resume it (Continue) or play it back

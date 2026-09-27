@@ -40,3 +40,18 @@ public static class CampaignSheetActions
     public static bool RestartNeedsConfirm(CampaignAttemptKind kind) =>
         kind == CampaignAttemptKind.Unfinished;
 }
+
+/// <summary>
+/// Level stepping on the campaign confirm sheet (swipe / arrow keys). The
+/// ladder is a progression, so it clamps at both ends instead of wrapping.
+/// </summary>
+public static class CampaignSheetPaging
+{
+    /// <summary>The level one step from <paramref name="level"/>, or null
+    /// when that step would leave the ladder.</summary>
+    public static int? Neighbor(int level, bool forward)
+    {
+        int target = level + (forward ? 1 : -1);
+        return target >= 0 && target < CampaignProgress.LevelCount ? target : null;
+    }
+}

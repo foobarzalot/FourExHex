@@ -23,6 +23,12 @@ using Godot;
 /// map-config screen via <see cref="LandscapeMenuChrome"/>: fills the safe area
 /// on a phone, caps to 920×520 (transposed in portrait) on desktop; an
 /// orientation flip rebuilds the body and re-renders.
+///
+/// Paging is opt-in (<see cref="Paging"/>): a sheet given a pager steps
+/// between neighboring pages on a horizontal swipe or the Left/Right keys.
+/// Each page is a complete dialog of its own — surface, title through
+/// buttons — and two of them ride a viewport-wide <see cref="PageCarousel"/>,
+/// so a page turn shows two distinct dialogs sliding past.
 /// </summary>
 public sealed partial class MapInfoSheet : CanvasLayer
 {
@@ -30,6 +36,10 @@ public sealed partial class MapInfoSheet : CanvasLayer
     public event Action? Canceled;
 
     public bool IsOpen { get; private set; }
+
+    /// <summary>Index of the page the sheet is on (the paging target once a
+    /// step commits); 0 for a sheet without paging.</summary>
+    public int PageIndex { get; private set; }
 
     /// <summary>One human player to surface in the "playing as" block.</summary>
     public readonly record struct HumanIdentity(string Name, Color Color);
@@ -40,31 +50,62 @@ public sealed partial class MapInfoSheet : CanvasLayer
     /// it (or not) itself.</summary>
     public readonly record struct SheetAction(string Label, Action OnPressed, bool KeepOpen = false);
 
+    /// <summary>Everything one page shows. <see cref="GameMode"/> empty = no
+    /// mode row; <see cref="GameModeEmphasis"/> golds it.
+    /// <see cref="RequestThumbnail"/> configures and kicks off the preview
+    /// render on the page's thumbnail.</summary>
+    public sealed record SheetPage(
+        string Title,
+        string Status,
+        IReadOnlyList<HumanIdentity> Humans,
+        Action<MapThumbnailView> RequestThumbnail,
+        IReadOnlyList<SheetAction> Actions,
+        string GameMode = "",
+        bool GameModeEmphasis = false);
+
+    /// <summary>Opt-in paging. <see cref="Neighbor"/> maps (index, forward)
+    /// to the adjacent index, or null at an end; <see cref="PageAt"/> builds
+    /// that page; <see cref="CanPage"/> lets the owner suspend paging (a
+    /// modal stacked over the sheet); <see cref="Stepped"/> reports a
+    /// committed step as (from, to, via "swipe" | "key").</summary>
+    public sealed record Paging(
+        int Index,
+        Func<int, SheetPage> PageAt,
+        Func<int, bool, int?> Neighbor,
+        Func<bool> CanPage,
+        Action<int, int, string> Stepped);
+
     private const float MaxLong = 920f;
     private const float MaxShort = 520f;
+
+    // Share of the finger's travel the page follows when dragged toward an
+    // end of the pages, where there is no neighbor to reveal.
+    private const float EndResistance = 0.3f;
 
     private static readonly Font SerifFont =
         GD.Load<FontFile>("res://fonts/DMSerifDisplay-Regular.ttf");
 
-    private readonly string _title;
-    private readonly string _status;
-    private readonly IReadOnlyList<HumanIdentity> _humans;
-    // Primary first. Defaults to a single Play action raising Confirmed.
-    private readonly IReadOnlyList<SheetAction> _actions;
-    // Optional game-mode line: the campaign confirm sheet sets this
-    // to tell the player which mode the level plays in; _gameModeEmphasis golds
-    // the Rising Tides callout. Empty = no row (other callers unchanged).
-    private readonly string _gameMode;
-    private readonly bool _gameModeEmphasis;
-    // Configure + kick off the preview render on the given thumbnail. Invoked on
-    // Open and after an orientation rebuild (the thumbnail is recreated each
-    // body build). Campaign passes RequestRandom(seed, opts); the load flow
-    // wires the SaveStore and calls RequestMap(name).
-    private readonly Action<MapThumbnailView> _requestThumbnail;
+    /// <summary>One carousel slot: a viewport-sized click-through root
+    /// holding a page's own dialog surface. <see cref="Content"/> null =
+    /// the slot is empty and its surface hidden.</summary>
+    private sealed class Slot
+    {
+        public Control Root = null!;
+        public PanelContainer Surface = null!;
+        public BoxContainer? Body;
+        public MapThumbnailView? Thumbnail;
+        public SheetPage? Content;
+        public int Index;
+    }
 
-    private PanelContainer _surface = null!;
-    private BoxContainer _body = null!;
-    private MapThumbnailView _thumbnail = null!;
+    private readonly SheetPage _initial;
+    private readonly Paging? _paging;
+    private readonly Slot[] _slots = { new Slot(), new Slot() };
+    // Horizontal-swipe paging (left = next, right = previous), fed from
+    // _Input; the carousel tracks its Drag offset live.
+    private readonly SwipeDetector _swipe = new SwipeDetector();
+
+    private PageCarousel _carousel = null!;
     private ScreenOrientation _orientation;
     private bool _resizeHooked;
 
@@ -77,16 +118,20 @@ public sealed partial class MapInfoSheet : CanvasLayer
         string gameMode = "",
         bool gameModeEmphasis = false)
     {
-        _title = title;
-        _status = status;
-        _humans = humans;
-        _requestThumbnail = requestThumbnail;
-        _actions = actions ?? new[]
-        {
-            new SheetAction(Strings.Get(StringKeys.ButtonPlay), () => Confirmed?.Invoke()),
-        };
-        _gameMode = gameMode;
-        _gameModeEmphasis = gameModeEmphasis;
+        // Defaults to a single Play action raising Confirmed.
+        _initial = new SheetPage(title, status, humans, requestThumbnail,
+            actions ?? new[]
+            {
+                new SheetAction(Strings.Get(StringKeys.ButtonPlay), () => Confirmed?.Invoke()),
+            },
+            gameMode, gameModeEmphasis);
+    }
+
+    public MapInfoSheet(SheetPage initial, Paging paging)
+    {
+        _initial = initial;
+        _paging = paging;
+        PageIndex = paging.Index;
     }
 
     public override void _Ready()
@@ -99,9 +144,16 @@ public sealed partial class MapInfoSheet : CanvasLayer
         _orientation = ScreenLayout.Resolve(viewport.X, viewport.Y);
         AddChild(ModalChrome.BuildBackdrop(viewport));
 
-        _surface = LandscapeMenuChrome.Build();
-        AddChild(_surface);
-        BuildBody();
+        foreach (Slot slot in _slots)
+        {
+            slot.Root = new Control();
+            slot.Surface = LandscapeMenuChrome.Build();
+            slot.Surface.Visible = false;
+            slot.Root.AddChild(slot.Surface);
+        }
+        _carousel = new PageCarousel(_slots[0].Root, _slots[1].Root);
+        AddChild(_carousel);
+        Populate(_slots[0], _initial, PageIndex);
 
         GetViewport().SizeChanged += OnViewportResized;
         SafeArea.Changed += OnSafeAreaChanged;
@@ -117,53 +169,80 @@ public sealed partial class MapInfoSheet : CanvasLayer
         _resizeHooked = false;
     }
 
-    private void BuildBody()
+    private Slot SlotOf(Control root) => _slots[0].Root == root ? _slots[0] : _slots[1];
+
+    private Slot FrontSlot => SlotOf(_carousel.Front);
+
+    // Fill a slot with a page: a fresh body, and — once the sheet is up —
+    // its preview render, so an incoming page is rendering as it slides in.
+    private void Populate(Slot slot, SheetPage page, int index)
     {
-        if (_orientation == ScreenOrientation.Portrait) BuildPortraitBody();
-        else BuildLandscapeBody();
+        Clear(slot);
+        slot.Content = page;
+        slot.Index = index;
+        slot.Surface.Visible = true;
+        BuildBody(slot, page);
+        if (IsOpen) page.RequestThumbnail(slot.Thumbnail!);
     }
 
-    private void BuildPortraitBody()
+    // Freeing the body takes its thumbnail out of the tree, which abandons
+    // any render still in flight.
+    private static void Clear(Slot slot)
+    {
+        slot.Body?.QueueFree();
+        slot.Body = null;
+        slot.Surface.Visible = false;
+        slot.Thumbnail = null;
+        slot.Content = null;
+    }
+
+    private void BuildBody(Slot slot, SheetPage page)
+    {
+        if (_orientation == ScreenOrientation.Portrait) BuildPortraitBody(slot, page);
+        else BuildLandscapeBody(slot, page);
+    }
+
+    private void BuildPortraitBody(Slot slot, SheetPage page)
     {
         var col = new VBoxContainer();
         col.AddThemeConstantOverride("separation", 14);
-        _surface.AddChild(col);
-        _body = col;
+        slot.Surface.AddChild(col);
+        slot.Body = col;
 
-        col.AddChild(MakeTitle(HorizontalAlignment.Center, 36));
+        col.AddChild(MakeTitle(page, HorizontalAlignment.Center, 36));
         col.AddChild(MakeGoldRule(Control.SizeFlags.ShrinkCenter));
-        if (_status.Length > 0) col.AddChild(MakeStatus(HorizontalAlignment.Center));
-        if (_gameMode.Length > 0) col.AddChild(MakeGameMode(HorizontalAlignment.Center));
-        col.AddChild(MakePlayingAs(HorizontalAlignment.Center));
-        _thumbnail = MakeThumbnail();
-        col.AddChild(_thumbnail);
+        if (page.Status.Length > 0) col.AddChild(MakeStatus(page, HorizontalAlignment.Center));
+        if (page.GameMode.Length > 0) col.AddChild(MakeGameMode(page, HorizontalAlignment.Center));
+        col.AddChild(MakePlayingAs(page, HorizontalAlignment.Center));
+        slot.Thumbnail = MakeThumbnail();
+        col.AddChild(slot.Thumbnail);
 
         // Two buttons share a row; three or more stack (a phone-width row
         // can't fit "Watch Replay / Restart / Cancel" at this font size).
-        BoxContainer buttonRow = _actions.Count > 1
+        BoxContainer buttonRow = page.Actions.Count > 1
             ? new VBoxContainer()
             : new HBoxContainer();
         buttonRow.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
         buttonRow.AddThemeConstantOverride("separation", 12);
         col.AddChild(buttonRow);
-        if (_actions.Count > 1)
+        if (page.Actions.Count > 1)
         {
-            AddActionButtons(buttonRow);
+            AddActionButtons(buttonRow, page);
             buttonRow.AddChild(MakeSheetButton(Strings.Get(StringKeys.ButtonCancel), Cancel));
         }
         else
         {
             buttonRow.AddChild(MakeSheetButton(Strings.Get(StringKeys.ButtonCancel), Cancel));
-            AddActionButtons(buttonRow);
+            AddActionButtons(buttonRow, page);
         }
     }
 
-    private void BuildLandscapeBody()
+    private void BuildLandscapeBody(Slot slot, SheetPage page)
     {
         var hbox = new HBoxContainer();
         hbox.AddThemeConstantOverride("separation", 20);
-        _surface.AddChild(hbox);
-        _body = hbox;
+        slot.Surface.AddChild(hbox);
+        slot.Body = hbox;
 
         var rail = new VBoxContainer
         {
@@ -173,14 +252,14 @@ public sealed partial class MapInfoSheet : CanvasLayer
         rail.AddThemeConstantOverride("separation", 10);
         hbox.AddChild(rail);
 
-        rail.AddChild(MakeTitle(HorizontalAlignment.Left, 32));
+        rail.AddChild(MakeTitle(page, HorizontalAlignment.Left, 32));
         rail.AddChild(MakeGoldRule(Control.SizeFlags.ShrinkBegin));
-        if (_status.Length > 0) rail.AddChild(MakeStatus(HorizontalAlignment.Left));
-        if (_gameMode.Length > 0) rail.AddChild(MakeGameMode(HorizontalAlignment.Left));
-        rail.AddChild(MakePlayingAs(HorizontalAlignment.Left));
+        if (page.Status.Length > 0) rail.AddChild(MakeStatus(page, HorizontalAlignment.Left));
+        if (page.GameMode.Length > 0) rail.AddChild(MakeGameMode(page, HorizontalAlignment.Left));
+        rail.AddChild(MakePlayingAs(page, HorizontalAlignment.Left));
         rail.AddChild(new Control { SizeFlagsVertical = Control.SizeFlags.ExpandFill });
         rail.AddChild(MakeSheetButton(Strings.Get(StringKeys.ButtonCancel), Cancel));
-        AddActionButtons(rail);
+        AddActionButtons(rail, page);
 
         hbox.AddChild(new ColorRect
         {
@@ -189,13 +268,13 @@ public sealed partial class MapInfoSheet : CanvasLayer
             SizeFlagsVertical = Control.SizeFlags.ExpandFill,
         });
 
-        _thumbnail = MakeThumbnail();
-        hbox.AddChild(_thumbnail);
+        slot.Thumbnail = MakeThumbnail();
+        hbox.AddChild(slot.Thumbnail);
     }
 
-    private Label MakeTitle(HorizontalAlignment align, int fontSize)
+    private static Label MakeTitle(SheetPage page, HorizontalAlignment align, int fontSize)
     {
-        var title = new Label { Text = _title, HorizontalAlignment = align };
+        var title = new Label { Text = page.Title, HorizontalAlignment = align };
         title.AddThemeFontOverride("font", SerifFont);
         title.AddThemeFontSizeOverride("font_size", fontSize);
         return title;
@@ -208,11 +287,11 @@ public sealed partial class MapInfoSheet : CanvasLayer
         SizeFlagsHorizontal = horizontal,
     };
 
-    private Label MakeStatus(HorizontalAlignment align)
+    private static Label MakeStatus(SheetPage page, HorizontalAlignment align)
     {
         var status = new Label
         {
-            Text = _status,
+            Text = page.Status,
             AutowrapMode = TextServer.AutowrapMode.WordSmart,
             HorizontalAlignment = align,
             SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
@@ -225,18 +304,18 @@ public sealed partial class MapInfoSheet : CanvasLayer
     /// <summary>The game-mode line. Same wrapped style as the status
     /// row, but golded when it's the Rising Tides callout so it reads as a
     /// distinct, important note rather than ordinary metadata.</summary>
-    private Label MakeGameMode(HorizontalAlignment align)
+    private static Label MakeGameMode(SheetPage page, HorizontalAlignment align)
     {
         var mode = new Label
         {
-            Text = _gameMode,
+            Text = page.GameMode,
             AutowrapMode = TextServer.AutowrapMode.WordSmart,
             HorizontalAlignment = align,
             SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
         };
         mode.AddThemeFontSizeOverride("font_size", 22);
         mode.AddThemeColorOverride("font_color",
-            _gameModeEmphasis ? UiPalette.Gold : UiPalette.InkSoft);
+            page.GameModeEmphasis ? UiPalette.Gold : UiPalette.InkSoft);
         return mode;
     }
 
@@ -244,9 +323,9 @@ public sealed partial class MapInfoSheet : CanvasLayer
     /// all-Computer note; exactly one → the campaign's tinted sentence (kept
     /// pixel-identical); two or more → a "You will be playing as:" lead-in over
     /// a wrapping row of color-swatch + name chips, one per human.</summary>
-    private Control MakePlayingAs(HorizontalAlignment align)
+    private static Control MakePlayingAs(SheetPage page, HorizontalAlignment align)
     {
-        if (_humans.Count == 0)
+        if (page.Humans.Count == 0)
         {
             var none = new Label
             {
@@ -260,9 +339,9 @@ public sealed partial class MapInfoSheet : CanvasLayer
             return none;
         }
 
-        if (_humans.Count == 1)
+        if (page.Humans.Count == 1)
         {
-            HumanIdentity h = _humans[0];
+            HumanIdentity h = page.Humans[0];
             var label = new Label
             {
                 Text = Strings.Get(StringKeys.MapInfoPlayingAs, ("name", h.Name)),
@@ -292,7 +371,7 @@ public sealed partial class MapInfoSheet : CanvasLayer
         chips.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
         if (align == HorizontalAlignment.Center)
             chips.Alignment = BoxContainer.AlignmentMode.Center;
-        foreach (HumanIdentity h in _humans)
+        foreach (HumanIdentity h in page.Humans)
         {
             var chip = new HBoxContainer();
             chip.AddThemeConstantOverride("separation", 6);
@@ -320,9 +399,9 @@ public sealed partial class MapInfoSheet : CanvasLayer
 
     /// <summary>One button per action, primary first, each closing the
     /// sheet before it runs so a scene change never races the modal.</summary>
-    private void AddActionButtons(BoxContainer container)
+    private void AddActionButtons(BoxContainer container, SheetPage page)
     {
-        foreach (SheetAction action in _actions)
+        foreach (SheetAction action in page.Actions)
         {
             SheetAction captured = action;
             container.AddChild(MakeSheetButton(captured.Label, () => Run(captured)));
@@ -348,9 +427,15 @@ public sealed partial class MapInfoSheet : CanvasLayer
     {
         Vector2 vp = GetViewport().GetVisibleRect().Size;
         bool portrait = ScreenLayout.Resolve(vp.X, vp.Y) == ScreenOrientation.Portrait;
-        LandscapeMenuChrome.ApplyLayout(_surface, vp, SafeArea.Current,
-            maxW: portrait ? MaxShort : MaxLong,
-            maxH: portrait ? MaxLong : MaxShort);
+        // The carousel spans the viewport (its Resized handler re-homes the
+        // dialogs when not transitioning); each dialog centers inside it.
+        _carousel.Size = vp;
+        foreach (Slot slot in _slots)
+        {
+            LandscapeMenuChrome.ApplyLayout(slot.Surface, vp, SafeArea.Current,
+                maxW: portrait ? MaxShort : MaxLong,
+                maxH: portrait ? MaxLong : MaxShort);
+        }
     }
 
     public void Open()
@@ -358,9 +443,11 @@ public sealed partial class MapInfoSheet : CanvasLayer
         if (IsOpen) return;
         IsOpen = true;
         Visible = true;
-        _requestThumbnail(_thumbnail);
+        Slot front = FrontSlot;
+        front.Content!.RequestThumbnail(front.Thumbnail!);
         Log.Debug(Log.LogCategory.Display,
-            $"MapInfoSheet.Open \"{_title}\" humans={_humans.Count} orient={_orientation}");
+            $"MapInfoSheet.Open \"{front.Content.Title}\" humans={front.Content.Humans.Count} " +
+            $"orient={_orientation} paging={_paging != null}");
     }
 
     public void Close()
@@ -368,18 +455,21 @@ public sealed partial class MapInfoSheet : CanvasLayer
         if (!IsOpen) return;
         IsOpen = false;
         Visible = false;
+        _swipe.Cancel();
     }
 
     private void Run(SheetAction action)
     {
+        // No pressing a page's button while it is sliding off.
+        if (_carousel.Transitioning) return;
         if (!action.KeepOpen) Close();
         Log.Debug(Log.LogCategory.Display,
             $"MapInfoSheet action \"{action.Label}\" (keepOpen={action.KeepOpen})");
         action.OnPressed();
     }
 
-    /// <summary>Enter / the primary action: the first one supplied.</summary>
-    private void Confirm() => Run(_actions[0]);
+    /// <summary>Enter / the primary action: the current page's first one.</summary>
+    private void Confirm() => Run(FrontSlot.Content!.Actions[0]);
 
     private void Cancel()
     {
@@ -399,6 +489,95 @@ public sealed partial class MapInfoSheet : CanvasLayer
         Cancel();
     }
 
+    private bool CanPage => _paging != null && IsOpen && _paging.CanPage();
+
+    // Populate the back slot with the neighbor a drag is revealing. False
+    // at an end of the pages: the back slot is emptied and nothing peeks.
+    private bool EnsurePeek(float offset)
+    {
+        Slot back = SlotOf(_carousel.Back);
+        int? target = _paging!.Neighbor(PageIndex, offset < 0f);
+        if (target == null)
+        {
+            Clear(back);
+            return false;
+        }
+        if (back.Content != null && back.Index == target.Value) return true;
+        Populate(back, _paging.PageAt(target.Value), target.Value);
+        Log.Debug(Log.LogCategory.Display, $"MapInfoSheet peek -> index {target.Value}");
+        return true;
+    }
+
+    /// <summary>
+    /// Animated page change, shared by swipe commits and the arrow keys:
+    /// the current page slides off (from wherever the drag left it) while
+    /// the neighbor slides in beside it. False when nothing stepped — an
+    /// end of the pages, paging suspended, or a slide already running.
+    /// </summary>
+    private bool Step(bool forward, string via)
+    {
+        if (!CanPage || _carousel.Transitioning) return false;
+        int? target = _paging!.Neighbor(PageIndex, forward);
+        if (target == null)
+        {
+            Log.Debug(Log.LogCategory.Display,
+                $"MapInfoSheet step blocked at end (index {PageIndex}, via {via})");
+            return false;
+        }
+
+        // A drag peek (or the page just stepped away from) is already in
+        // the back slot; otherwise build it here.
+        Slot incoming = SlotOf(_carousel.Back);
+        if (incoming.Content == null || incoming.Index != target.Value)
+            Populate(incoming, _paging.PageAt(target.Value), target.Value);
+
+        int from = PageIndex;
+        PageIndex = target.Value;
+        _carousel.Commit(forward, onLanded: () => { });
+        _paging.Stepped(from, target.Value, via);
+        return true;
+    }
+
+    /// <summary>Swipe paging: mouse presses are observed (not consumed) so
+    /// taps still reach the buttons; touch arrives here as emulated
+    /// finger-0 mouse events.</summary>
+    public override void _Input(InputEvent @event)
+    {
+        if (_paging == null || !IsOpen) return;
+
+        if (@event is InputEventMouseButton mb && mb.ButtonIndex == MouseButton.Left)
+        {
+            if (mb.Pressed)
+            {
+                if (CanPage && !_carousel.Transitioning) _swipe.Press(mb.Position.X, mb.Position.Y);
+                return;
+            }
+            bool wasTracking = _swipe.IsTrackingHorizontal;
+            SwipeDirection dir = _swipe.Release(mb.Position.X, mb.Position.Y);
+            if (dir == SwipeDirection.None && !wasTracking) return;
+
+            // Page-turning: finger left = next, finger right = previous.
+            if (dir == SwipeDirection.None || !Step(forward: dir == SwipeDirection.Left, via: "swipe"))
+            {
+                Log.Debug(Log.LogCategory.Display, $"MapInfoSheet spring back (index {PageIndex})");
+                _carousel.SpringBack();
+            }
+            // A drag-release isn't a click anyone needs — eat it so no
+            // button underneath fires.
+            GetViewport().SetInputAsHandled();
+            return;
+        }
+
+        if (@event is InputEventMouseMotion mm)
+        {
+            if (_carousel.Transitioning) return;
+            float offset = _swipe.Drag(mm.Position.X, mm.Position.Y);
+            if (!_swipe.IsTrackingHorizontal) return;
+            bool peeking = offset == 0f || EnsurePeek(offset);
+            _carousel.Track(peeking ? offset : offset * EndResistance);
+        }
+    }
+
     public override void _UnhandledInput(InputEvent @event)
     {
         if (!IsOpen) return;
@@ -410,7 +589,14 @@ public sealed partial class MapInfoSheet : CanvasLayer
         }
         else if (keyEvent.Keycode == Key.Enter || keyEvent.Keycode == Key.KpEnter)
         {
+            // Handled first: the action may change scene, taking this
+            // sheet out of the tree.
+            GetViewport().SetInputAsHandled();
             Confirm();
+        }
+        else if (_paging != null && (keyEvent.Keycode == Key.Left || keyEvent.Keycode == Key.Right))
+        {
+            Step(forward: keyEvent.Keycode == Key.Right, via: "key");
             GetViewport().SetInputAsHandled();
         }
     }
@@ -422,9 +608,12 @@ public sealed partial class MapInfoSheet : CanvasLayer
         if (next != _orientation)
         {
             _orientation = next;
-            _body.QueueFree();
-            BuildBody();
-            if (IsOpen) _requestThumbnail(_thumbnail);
+            foreach (Slot slot in _slots)
+            {
+                if (slot.Content != null) Populate(slot, slot.Content, slot.Index);
+            }
+            Log.Debug(Log.LogCategory.Display,
+                $"MapInfoSheet rebuilt for {_orientation} on index {PageIndex}");
         }
         ApplyLayout();
     }

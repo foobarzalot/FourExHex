@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 FooBarzalot
+using System;
 using System.Collections.Generic;
 using Godot;
 
@@ -11,11 +12,32 @@ using Godot;
 /// stored attempt (see <see cref="CampaignSheetActions"/>; the menu maps
 /// each action to a label + handler). The sheet UI itself is shared with the
 /// New Game / Map Editor "load starting map" flows; this factory just supplies
-/// the campaign-specific content.
+/// the campaign-specific content, and the paging that steps the sheet to the
+/// neighboring levels (<see cref="CampaignSheetPaging"/>).
 /// </summary>
 public static class CampaignConfirmSheet
 {
-    public static MapInfoSheet Create(int level, IReadOnlyList<MapInfoSheet.SheetAction> actions)
+    /// <summary>The sheet opened on <paramref name="level"/>.
+    /// <paramref name="actionsFor"/> supplies a level's buttons — called for
+    /// the opening level and for each neighbor the sheet pages to.</summary>
+    public static MapInfoSheet Create(
+        int level,
+        Func<int, IReadOnlyList<MapInfoSheet.SheetAction>> actionsFor,
+        Func<bool> canPage,
+        Action<int, int, string> stepped)
+    {
+        return new MapInfoSheet(
+            BuildPage(level, actionsFor(level)),
+            new MapInfoSheet.Paging(
+                level,
+                PageAt: target => BuildPage(target, actionsFor(target)),
+                Neighbor: CampaignSheetPaging.Neighbor,
+                CanPage: canPage,
+                Stepped: stepped));
+    }
+
+    private static MapInfoSheet.SheetPage BuildPage(
+        int level, IReadOnlyList<MapInfoSheet.SheetAction> actions)
     {
         int seed = CampaignProgress.SeedForLevel(level);
         string title = Strings.Get(StringKeys.CampaignLevelTitle,
@@ -51,7 +73,7 @@ public static class CampaignConfirmSheet
             new(colorName, new Color(colorHex)),
         };
 
-        return new MapInfoSheet(
+        return new MapInfoSheet.SheetPage(
             title,
             status,
             humans,
@@ -63,8 +85,8 @@ public static class CampaignConfirmSheet
                 CampaignProgress.MapGenOptionsForLevel(level),
                 Player.BuildCampaignRoster(level),
                 mode),
-            actions: actions,
-            gameMode: gameMode,
-            gameModeEmphasis: mode != GameMode.Freeform);
+            actions,
+            gameMode,
+            GameModeEmphasis: mode != GameMode.Freeform);
     }
 }

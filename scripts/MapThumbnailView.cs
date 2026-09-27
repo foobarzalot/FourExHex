@@ -98,6 +98,22 @@ public partial class MapThumbnailView : Control
         };
     }
 
+    public override void _ExitTree() => Cancel();
+
+    /// <summary>Abandon any render in flight: its snapshot is never taken.
+    /// For a preview that was superseded before it landed (a paged sheet's
+    /// skipped page, a body rebuilt on rotation).</summary>
+    public void Cancel()
+    {
+        int token = ++_renderToken;
+        Log.Debug(Log.LogCategory.Display, $"MapThumbnail: cancelled (token={token})");
+    }
+
+    // A render resumes after each await only while it is still the latest
+    // request on a thumbnail that is still in the tree.
+    private bool IsCurrent(int token) =>
+        token == _renderToken && IsInstanceValid(this) && IsInsideTree();
+
     /// <summary>Wire the store used to load map-editor-generated maps. Must be
     /// called before <see cref="RequestMap"/>.</summary>
     public void SetSaveStore(SaveStore store) => _saveStore = store;
@@ -233,7 +249,7 @@ public partial class MapThumbnailView : Control
         // settle, then frame the full grid rectangle (NOT the per-seed land box)
         // so the board stays at a fixed scale/position across re-rolls.
         await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
-        if (token != _renderToken)
+        if (!IsCurrent(token))
         {
             Log.Debug(Log.LogCategory.Display,
                 $"MapThumbnail: abandoned {label} at layout (token={token}, now={_renderToken})");
@@ -244,7 +260,7 @@ public partial class MapThumbnailView : Control
         // Render exactly one frame, wait for the GPU to finish, then snapshot.
         _viewport.RenderTargetUpdateMode = SubViewport.UpdateMode.Once;
         await ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
-        if (token != _renderToken)
+        if (!IsCurrent(token))
         {
             Log.Debug(Log.LogCategory.Display,
                 $"MapThumbnail: abandoned {label} at draw (token={token}, now={_renderToken})");

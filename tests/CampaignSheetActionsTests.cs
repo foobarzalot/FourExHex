@@ -41,4 +41,20 @@ public class CampaignSheetActionsTests
         Assert.False(CampaignSheetActions.RestartNeedsConfirm(CampaignAttemptKind.Finished));
         Assert.False(CampaignSheetActions.RestartNeedsConfirm(CampaignAttemptKind.None));
     }
+
+    [Theory]
+    [InlineData(0, true, 1)]
+    [InlineData(0x40, true, 0x41)]
+    [InlineData(0x40, false, 0x3F)]
+    [InlineData(CampaignProgress.LevelCount - 1, false, CampaignProgress.LevelCount - 2)]
+    public void Neighbor_StepsOneLevelInsideTheLadder(int level, bool forward, int expected) =>
+        Assert.Equal(expected, CampaignSheetPaging.Neighbor(level, forward));
+
+    [Fact]
+    public void Neighbor_ClampsAtTheFirstLevel() =>
+        Assert.Null(CampaignSheetPaging.Neighbor(0, forward: false));
+
+    [Fact]
+    public void Neighbor_ClampsAtTheLastLevel() =>
+        Assert.Null(CampaignSheetPaging.Neighbor(CampaignProgress.LevelCount - 1, forward: true));
 }
