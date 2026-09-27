@@ -21,7 +21,7 @@
 public static class AppVersion
 {
     public const string Marketing = "1.0";
-    public const int Build = 53;         // monotonic; bumped per TestFlight upload
+    public const int Build = 54;         // monotonic; bumped per TestFlight upload
 
     /// <summary>Human-readable stamp, e.g. <c>v1.0 (6)</c>.</summary>
     public static string Display => $"v{Marketing} ({Build})";
