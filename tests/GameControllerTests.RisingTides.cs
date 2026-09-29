@@ -20,10 +20,10 @@ public partial class GameControllerTests
         public Player Red { get; }
         public Player Blue { get; }
 
-        public TidesGame(HexGrid grid, GameMode mode, int turnNumber = 1)
+        public TidesGame(HexGrid grid, GameMode mode, int turnNumber = 1, bool blueIsAi = false)
         {
             Red = new Player("Red", PlayerId.FromIndex(0));
-            Blue = new Player("Blue", PlayerId.FromIndex(1));
+            Blue = new Player("Blue", PlayerId.FromIndex(1), isAi: blueIsAi);
             var players = new List<Player> { Red, Blue };
             IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
             State = new GameState(
@@ -342,6 +342,91 @@ public partial class GameControllerTests
         Assert.Null(g.State.Grid.Get(dest.Coord)?.Unit); // placement undone
         Assert.Equal(afterSubmerge, g.State.Grid.Count);  // tile stayed drowned
         Assert.Contains(drowned, g.State.WaterCoords);
+    }
+
+    // --- Elimination cause (run stats) ---
+
+    // 5x1 row: Red owns cols 0-1, Blue cols 2-4. Red's turn-1 tide takes one
+    // of its two tiles at turn end, drowning its last capital.
+    private static HexGrid RedTwoTilesBlueThree()
+    {
+        var grid = TestHelpers.BuildRectGrid(5, 1, PlayerId.FromIndex(1));
+        grid.Get(HexCoord.FromOffset(0, 0))!.Owner = PlayerId.FromIndex(0);
+        grid.Get(HexCoord.FromOffset(1, 0))!.Owner = PlayerId.FromIndex(0);
+        return grid;
+    }
+
+    // 5x1 row: Red owns cols 0-2 with a Soldier on col 2, Blue cols 3-4 (its
+    // capital on col 3). Capturing col 3 leaves Blue a capital-less singleton.
+    // Blue is an AI: a human's defeat pauses the game and locks undo.
+    private static TidesGame RedPoisedToTakeBluesCapital()
+    {
+        var grid = TestHelpers.BuildRectGrid(5, 1, PlayerId.FromIndex(0));
+        grid.Get(HexCoord.FromOffset(3, 0))!.Owner = PlayerId.FromIndex(1);
+        grid.Get(HexCoord.FromOffset(4, 0))!.Owner = PlayerId.FromIndex(1);
+        grid.Get(HexCoord.FromOffset(2, 0))!.Occupant =
+            new Unit(PlayerId.FromIndex(0), UnitLevel.Soldier);
+        return new TidesGame(grid, GameMode.RisingTides, blueIsAi: true);
+    }
+
+    private static void CaptureBluesCapital(TidesGame g)
+    {
+        g.Map.SimulateClick(g.State.Grid.Get(HexCoord.FromOffset(2, 0)));
+        g.Map.SimulateClick(g.State.Grid.Get(HexCoord.FromOffset(3, 0)));
+    }
+
+    [Fact]
+    public void RisingTides_TideDrownsLastCapital_RecordsEliminationByTide()
+    {
+        var g = new TidesGame(RedTwoTilesBlueThree(), GameMode.RisingTides);
+
+        g.Hud.ClickEndTurn(); // Red's own tide drowns its last capital
+
+        Assert.True(WinConditionRules.IsEliminated(g.Red.Id, g.State.Grid));
+        Assert.Equal(1, g.State.Stats.For(g.Red.Id).EliminationOrder);
+        Assert.True(g.State.Stats.For(g.Red.Id).EliminatedByTide);
+        Assert.Equal(0, g.State.Stats.For(g.Blue.Id).EliminationOrder);
+    }
+
+    [Fact]
+    public void RisingTides_CaptureTakesLastCapital_RecordsEliminationByConquest()
+    {
+        TidesGame g = RedPoisedToTakeBluesCapital();
+
+        CaptureBluesCapital(g);
+
+        Assert.True(WinConditionRules.IsEliminated(g.Blue.Id, g.State.Grid));
+        Assert.Equal(1, g.State.Stats.For(g.Blue.Id).EliminationOrder);
+        Assert.False(g.State.Stats.For(g.Blue.Id).EliminatedByTide);
+    }
+
+    [Fact]
+    public void RisingTides_UndoOfEliminatingCapture_ClearsTheEliminationRecord()
+    {
+        TidesGame g = RedPoisedToTakeBluesCapital();
+        CaptureBluesCapital(g);
+        Assert.Equal(1, g.State.Stats.For(g.Blue.Id).EliminationOrder);
+
+        g.Hud.ClickUndoLast();
+
+        Assert.False(WinConditionRules.IsEliminated(g.Blue.Id, g.State.Grid));
+        Assert.Equal(0, g.State.Stats.For(g.Blue.Id).EliminationOrder);
+        Assert.False(g.State.Stats.For(g.Blue.Id).EliminatedByTide);
+    }
+
+    [Fact]
+    public void RisingTides_Replay_RederivesTheEliminationRecord()
+    {
+        // BeginReplay zeroes the stats at rewind and playback re-executes the
+        // recorded turn — one elimination, not two.
+        var g = new TidesGame(RedTwoTilesBlueThree(), GameMode.RisingTides);
+        g.Hud.ClickEndTurn();
+        Assert.True(g.Session.IsGameOver);
+
+        g.Controller.BeginReplay();
+
+        Assert.Equal(1, g.State.Stats.For(g.Red.Id).EliminationOrder);
+        Assert.True(g.State.Stats.For(g.Red.Id).EliminatedByTide);
     }
 
     [Fact]

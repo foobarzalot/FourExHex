@@ -258,6 +258,77 @@ public class RunStatsTrackingTests
         Assert.Equal(0, loaded.Stats.For(Blue).UnitsLostToBankruptcy);
     }
 
+    // --- Elimination cause -------------------------------------------------
+
+    [Fact]
+    public void RecordElimination_SequencesOrderAndKeepsTheCause()
+    {
+        var stats = new RunStats();
+
+        stats.RecordElimination(Blue, byTide: false);
+        stats.RecordElimination(Red, byTide: true);
+
+        Assert.Equal(1, stats.For(Blue).EliminationOrder);
+        Assert.False(stats.For(Blue).EliminatedByTide);
+        Assert.Equal(2, stats.For(Red).EliminationOrder);
+        Assert.True(stats.For(Red).EliminatedByTide);
+        Assert.False(stats.For(Red).IsZero);
+    }
+
+    [Fact]
+    public void LastEliminated_IsTheHighestOrder_ExcludingTheWinner()
+    {
+        PlayerId green = PlayerId.FromIndex(2);
+        var stats = new RunStats();
+        Assert.Null(stats.LastEliminated(excluding: Red));
+
+        stats.RecordElimination(Blue, byTide: true);
+        stats.RecordElimination(green, byTide: false);
+        stats.RecordElimination(Red, byTide: true);
+
+        Assert.Equal(green, stats.LastEliminated(excluding: Red));
+        Assert.Equal(Red, stats.LastEliminated(excluding: Blue));
+    }
+
+    [Fact]
+    public void EliminationFields_SurviveCopyAndRestore_AndClearZeroes()
+    {
+        var stats = new RunStats();
+        stats.RecordElimination(Blue, byTide: true);
+
+        RunStats copy = stats.Copy();
+        stats.Clear();
+
+        Assert.Equal(0, stats.For(Blue).EliminationOrder);
+        Assert.False(stats.For(Blue).EliminatedByTide);
+        Assert.Null(stats.LastEliminated(excluding: Red));
+
+        stats.RestoreFrom(copy);
+
+        Assert.Equal(1, stats.For(Blue).EliminationOrder);
+        Assert.True(stats.For(Blue).EliminatedByTide);
+    }
+
+    [Fact]
+    public void SaveRoundTrip_PreservesEliminationCause()
+    {
+        var redP = new Player("Red", PlayerId.FromIndex(0));
+        var blueP = new Player("Blue", PlayerId.FromIndex(1));
+        var players = new List<Player> { redP, blueP };
+        HexGrid grid = TestHelpers.BuildRectGrid(3, 1, Blue);
+        grid.Get(HexCoord.FromOffset(0, 0))!.Owner = Red;
+        IReadOnlyList<Territory> territories = TestHelpers.BuildTerritoriesFromGrid(grid);
+        var state = new GameState(grid, territories, players, new TurnState(players), new Treasury());
+        state.Stats.RecordElimination(Red, byTide: true);
+
+        string json = SaveSerializer.Serialize(state, 42, players, "s", 100);
+        GameState loaded = SaveSerializer.Deserialize(json).State;
+
+        Assert.Equal(1, loaded.Stats.For(Red).EliminationOrder);
+        Assert.True(loaded.Stats.For(Red).EliminatedByTide);
+        Assert.Equal(0, loaded.Stats.For(Blue).EliminationOrder);
+    }
+
     [Fact]
     public void SaveWithAllZeroStats_OmitsTheField()
     {

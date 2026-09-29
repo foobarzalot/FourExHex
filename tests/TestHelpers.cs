@@ -138,7 +138,8 @@ public static class TestHelpers
         Action<HexGrid>? beforeTerritories = null,
         Action<GameState>? beforeStart = null,
         IAchievementStore? achievementStore = null,
-        int? campaignLevel = null)
+        int? campaignLevel = null,
+        GameMode mode = GameMode.Freeform)
     {
         players ??= new List<Player>
         {
@@ -167,7 +168,7 @@ public static class TestHelpers
         var state = new GameState(
             grid, territories, players,
             new TurnState(players, currentPlayerIndex, turnNumber),
-            new Treasury(), waterCoords);
+            new Treasury(), waterCoords, mode: mode);
         var session = new SessionState();
         if (suppressClaimVictory)
         {

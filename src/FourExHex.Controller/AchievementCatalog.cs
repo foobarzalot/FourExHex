@@ -37,8 +37,10 @@ public sealed record GameEndEvent : AchievementEvent
     /// <summary>Round counter at game end (one increment per full seat rotation).</summary>
     public int TurnNumber { get; init; }
 
-    /// <summary>Grid tiles still on the board — shrinks under Rising Tides.</summary>
-    public int LandTilesRemaining { get; init; }
+    /// <summary>True when a human won with every opponent eliminated and
+    /// the last of them to fall lost their final capital to a Rising Tides
+    /// submerge rather than a capture.</summary>
+    public bool LastOpponentDrowned { get; init; }
 
     /// <summary>Units the winning human seat lost to bankrupt upkeep this
     /// game; 0 when no human won.</summary>
@@ -135,9 +137,6 @@ public static class AchievementCatalog
     public const string OpenField = "skill.open_field";
     public const string Blitz = "skill.blitz";
     public const string ChainOfCommand = "skill.chain_of_command";
-
-    /// <summary>The Last Hill's land-tile ceiling at game end.</summary>
-    public const int LastHillLandTiles = 20;
 
     /// <summary>Blitz's winning-turn ceiling (round counter).</summary>
     public const int BlitzTurnLimit = 20;
@@ -265,7 +264,8 @@ public static class AchievementCatalog
             {
                 HumanWon: true,
                 Mode: GameMode.RisingTides,
-                LandTilesRemaining: <= LastHillLandTiles,
+                WonByClaim: false,
+                LastOpponentDrowned: true,
             } ? 1 : 0),
         new(VikingSlayer,
             StringKeys.AchieveVikingSlayerTitle,

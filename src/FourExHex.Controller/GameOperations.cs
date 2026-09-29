@@ -824,7 +824,7 @@ public class GameOperations
         }
         if (changed)
         {
-            HandleNewlyDefeated(colorsWithCapitalBefore);
+            HandleNewlyDefeated(colorsWithCapitalBefore, byTide: true);
         }
     }
 
@@ -860,7 +860,7 @@ public class GameOperations
         // same defeat cue/overlay a capture would.
         if (changed)
         {
-            HandleNewlyDefeated(colorsWithCapitalBefore);
+            HandleNewlyDefeated(colorsWithCapitalBefore, byTide: true);
         }
     }
 
@@ -2002,7 +2002,7 @@ public class GameOperations
         // empty is freshly defeated by this capture. At most one color
         // can transition per capture (a single move/place captures one
         // tile from one color).
-        HandleNewlyDefeated(colorsWithCapitalBefore);
+        HandleNewlyDefeated(colorsWithCapitalBefore, byTide: false);
 
         // Instant replay coalesces the structural redraw to once per
         // turn (see InstantReplayTick); skip the per-capture rebuild
@@ -2092,13 +2092,16 @@ public class GameOperations
     /// raise the defeat overlay. Shared by <see cref="HandleCapture"/> and the
     /// Rising Tides start-of-turn submerge — a sinking shore tile can
     /// drown a player's last capital just like a capture can.
+    /// <paramref name="byTide"/> is the elimination's cause, recorded in the
+    /// run stats (observation-only) for the achievement facts.
     /// </summary>
-    private void HandleNewlyDefeated(HashSet<PlayerId> colorsWithCapitalBefore)
+    private void HandleNewlyDefeated(HashSet<PlayerId> colorsWithCapitalBefore, bool byTide)
     {
         HashSet<PlayerId> colorsWithCapitalAfter = ColorsWithCapital(_state.Territories);
         foreach (PlayerId c in colorsWithCapitalBefore)
         {
             if (colorsWithCapitalAfter.Contains(c)) continue;
+            RecordElimination(c, byTide);
             EmitSound(SoundEffect.PlayerDefeated);
             int defeatedIndex = -1;
             for (int i = 0; i < _state.Turns.Players.Count; i++)
@@ -2121,6 +2124,22 @@ public class GameOperations
                 EmitEndgameCue(SoundEffect.Bankruptcy);
                 if (!_isReplayMode()) EnterEndgamePause("defeat");
             }
+        }
+    }
+
+    private void RecordElimination(PlayerId victim, bool byTide)
+    {
+        if (victim.IsNone) return;
+        _state.Stats.RecordElimination(victim, byTide);
+        int order = _state.Stats.For(victim).EliminationOrder;
+        Log.Trace(Log.LogCategory.Achieve,
+            $"[stats] {victim} eliminated order={order} byTide={byTide}");
+        if (byTide)
+        {
+            Log.Debug(Log.LogCategory.Tide,
+                $"[tide] T{_state.Turns.TurnNumber} " +
+                $"{_state.Turns.Players.FirstOrDefault(p => p.Id == victim)?.Name ?? "?"} " +
+                $"eliminated by the tide (order={order})");
         }
     }
 

@@ -709,7 +709,7 @@ public class GameController
             WinnerDifficulty = humanWon ? _state.DifficultyOf(winner!.Id) : null,
             WonByClaim = humanWon && _session.WonByClaim,
             TurnNumber = _state.Turns.TurnNumber,
-            LandTilesRemaining = _state.Grid.Count,
+            LastOpponentDrowned = humanWon && LastOpponentDrowned(winner!.Id),
             WinnerUnitsLostToBankruptcy = humanWon ? _state.Stats.For(winner!.Id).UnitsLostToBankruptcy : 0,
             WinnerTowersBuilt = humanWon ? _state.Stats.For(winner!.Id).TowersBuilt : 0,
             VikingKills = vikingKills,
@@ -719,6 +719,23 @@ public class GameController
         _awardedAchievementsThisGame = true;
         Log.Debug(Log.LogCategory.Achieve, $"[award] facts {facts}");
         RaiseAchievementEvent(facts);
+    }
+
+    /// <summary>
+    /// True when every seat other than <paramref name="winner"/> is
+    /// eliminated and the last of them to fall was drowned by the tide
+    /// rather than captured. An opponent with no recorded elimination
+    /// (never held a capital this game) is not "the last to fall".
+    /// </summary>
+    private bool LastOpponentDrowned(PlayerId winner)
+    {
+        foreach (Player p in _state.Turns.Players)
+        {
+            if (p.Id == winner) continue;
+            if (!WinConditionRules.IsEliminated(p.Id, _state.Grid)) return false;
+        }
+        PlayerId? last = _state.Stats.LastEliminated(excluding: winner);
+        return last.HasValue && _state.Stats.For(last.Value).EliminatedByTide;
     }
 
     /// <summary>

@@ -49,6 +49,62 @@ public class AchievementAwardTests
         h.Map.SimulateClick(h.State.Grid.Get(HexCoord.FromOffset(4, 0)));
     }
 
+    // --- The Last Hill ---
+
+    [Fact]
+    public void RisingTidesWin_LastOpponentDrownedByTheTide_UnlocksLastHill()
+    {
+        // 6x4 board (24 tiles — board size is irrelevant): human Red owns
+        // everything but the AI Blue's two tiles. Blue passes its turn, and
+        // its own end-of-turn tide drowns its last capital.
+        var store = new FakeAchievementStore();
+        var red = new Player("Red", PlayerId.FromIndex(0));
+        var blue = new Player("Blue", PlayerId.FromIndex(1), isAi: true);
+        ControllerHarness h = TestHelpers.BuildControllerGame(
+            players: new List<Player> { red, blue },
+            cols: 6, rows: 4,
+            defaultOwner: red.Id,
+            ownerOverrides: new[] { (4, 0, blue.Id), (5, 0, blue.Id) },
+            achievementStore: store,
+            campaignLevel: 0,
+            mode: GameMode.RisingTides);
+
+        h.Hud.ClickEndTurn(); // Red passes; Blue's turn runs inline and its tide applies
+
+        Assert.Equal(red.Id, h.Session.Winner);
+        Assert.True(h.State.Stats.For(blue.Id).EliminatedByTide);
+        Assert.True(h.State.Grid.Count > 20);
+        Assert.Contains(AchievementCatalog.LastHill, store.Unlocks);
+    }
+
+    [Fact]
+    public void RisingTidesWin_LastOpponentConquered_DoesNotUnlockLastHill()
+    {
+        // A 5-tile board: Red's Soldier takes Blue's capital (conquest),
+        // leaving a capital-less singleton; the win lands at end of turn.
+        var store = new FakeAchievementStore();
+        var red = new Player("Red", PlayerId.FromIndex(0));
+        var blue = new Player("Blue", PlayerId.FromIndex(1), isAi: true);
+        ControllerHarness h = TestHelpers.BuildControllerGame(
+            players: new List<Player> { red, blue },
+            cols: 5, rows: 1,
+            defaultOwner: red.Id,
+            ownerOverrides: new[] { (3, 0, blue.Id), (4, 0, blue.Id) },
+            beforeTerritories: grid =>
+                grid.Get(HexCoord.FromOffset(2, 0))!.Occupant = new Unit(red.Id, UnitLevel.Soldier),
+            achievementStore: store,
+            campaignLevel: 0,
+            mode: GameMode.RisingTides);
+
+        h.Map.SimulateClick(h.State.Grid.Get(HexCoord.FromOffset(2, 0)));
+        h.Map.SimulateClick(h.State.Grid.Get(HexCoord.FromOffset(3, 0)));
+        h.Hud.ClickEndTurn();
+
+        Assert.Equal(red.Id, h.Session.Winner);
+        Assert.Contains(AchievementCatalog.DryFeet, store.Unlocks);
+        Assert.DoesNotContain(AchievementCatalog.LastHill, store.Unlocks);
+    }
+
     // --- The award happens ---
 
     [Fact]

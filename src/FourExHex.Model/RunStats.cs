@@ -26,8 +26,18 @@ public sealed class PlayerRunStats
     /// had arrive or be placed on a tile; 0 when none yet.</summary>
     public int MaxUnitLevelFielded { get; set; }
 
+    /// <summary>1-based position of this player's elimination (loss of
+    /// their last capital) in the game's elimination sequence; 0 while
+    /// they have not been eliminated.</summary>
+    public int EliminationOrder { get; set; }
+
+    /// <summary>True when the elimination came from a Rising Tides
+    /// submerge rather than a capture.</summary>
+    public bool EliminatedByTide { get; set; }
+
     public bool IsZero =>
-        UnitsLostToBankruptcy == 0 && TowersBuilt == 0 && VikingKills == 0 && MaxUnitLevelFielded == 0;
+        UnitsLostToBankruptcy == 0 && TowersBuilt == 0 && VikingKills == 0 && MaxUnitLevelFielded == 0
+        && EliminationOrder == 0 && !EliminatedByTide;
 
     public PlayerRunStats Copy() => new()
     {
@@ -35,6 +45,8 @@ public sealed class PlayerRunStats
         TowersBuilt = TowersBuilt,
         VikingKills = VikingKills,
         MaxUnitLevelFielded = MaxUnitLevelFielded,
+        EliminationOrder = EliminationOrder,
+        EliminatedByTide = EliminatedByTide,
     };
 }
 
@@ -58,6 +70,35 @@ public sealed class RunStats
             _byPlayer[id] = stats;
         }
         return stats;
+    }
+
+    /// <summary>Mark <paramref name="victim"/> as eliminated, next in the
+    /// game's elimination sequence, with its cause.</summary>
+    public void RecordElimination(PlayerId victim, bool byTide)
+    {
+        int last = 0;
+        foreach (PlayerRunStats s in _byPlayer.Values)
+        {
+            if (s.EliminationOrder > last) last = s.EliminationOrder;
+        }
+        PlayerRunStats stats = For(victim);
+        stats.EliminationOrder = last + 1;
+        stats.EliminatedByTide = byTide;
+    }
+
+    /// <summary>The most recently eliminated player other than
+    /// <paramref name="excluding"/>; null when nobody else has been.</summary>
+    public PlayerId? LastEliminated(PlayerId excluding)
+    {
+        PlayerId? latest = null;
+        int latestOrder = 0;
+        foreach (KeyValuePair<PlayerId, PlayerRunStats> kvp in _byPlayer)
+        {
+            if (kvp.Key == excluding || kvp.Value.EliminationOrder <= latestOrder) continue;
+            latest = kvp.Key;
+            latestOrder = kvp.Value.EliminationOrder;
+        }
+        return latest;
     }
 
     /// <summary>Every player with a stats entry (zero entries included).</summary>

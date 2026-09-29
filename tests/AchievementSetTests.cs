@@ -90,14 +90,27 @@ public class AchievementSetTests
     }
 
     [Fact]
-    public void LastHill_RequiresRisingTidesAndTwentyOrFewerTiles()
+    public void LastHill_RequiresARisingTidesWinWithTheLastOpponentDrowned()
     {
-        Assert.Equal(1, Advance(AchievementCatalog.LastHill,
-            Win() with { Mode = GameMode.RisingTides, LandTilesRemaining = 20 }));
+        GameEndEvent drowned = Win() with { Mode = GameMode.RisingTides, LastOpponentDrowned = true };
+
+        Assert.Equal(1, Advance(AchievementCatalog.LastHill, drowned));
         Assert.Equal(0, Advance(AchievementCatalog.LastHill,
-            Win() with { Mode = GameMode.RisingTides, LandTilesRemaining = 21 }));
+            drowned with { LastOpponentDrowned = false })); // last rival conquered
         Assert.Equal(0, Advance(AchievementCatalog.LastHill,
-            Win() with { LandTilesRemaining = 20 })); // Freeform
+            drowned with { WonByClaim = true }));
+        Assert.Equal(0, Advance(AchievementCatalog.LastHill,
+            Loss() with { Mode = GameMode.RisingTides, LastOpponentDrowned = true }));
+    }
+
+    [Theory]
+    [InlineData(GameMode.Freeform)]
+    [InlineData(GameMode.FogOfWar)]
+    [InlineData(GameMode.VikingRaiders)]
+    public void LastHill_NeverAdvancesOutsideRisingTides(GameMode mode)
+    {
+        Assert.Equal(0, Advance(AchievementCatalog.LastHill,
+            Win() with { Mode = mode, LastOpponentDrowned = true }));
     }
 
     [Fact]

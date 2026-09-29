@@ -291,6 +291,8 @@ public static class SaveSerializer
                 TowersBuilt = kvp.Value.TowersBuilt,
                 VikingKills = kvp.Value.VikingKills,
                 MaxUnitLevelFielded = kvp.Value.MaxUnitLevelFielded,
+                EliminationOrder = kvp.Value.EliminationOrder,
+                EliminatedByTide = kvp.Value.EliminatedByTide,
             });
         }
         entries?.Sort((a, b) => a.Slot.CompareTo(b.Slot));
@@ -311,6 +313,8 @@ public static class SaveSerializer
             p.TowersBuilt = Math.Max(0, e.TowersBuilt);
             p.VikingKills = Math.Max(0, e.VikingKills);
             p.MaxUnitLevelFielded = Math.Max(0, e.MaxUnitLevelFielded);
+            p.EliminationOrder = Math.Max(0, e.EliminationOrder);
+            p.EliminatedByTide = p.EliminationOrder > 0 && e.EliminatedByTide;
         }
         return stats;
     }
@@ -1416,6 +1420,8 @@ public sealed class RunStatsEntryDto
     public int TowersBuilt { get; set; }
     public int VikingKills { get; set; }
     public int MaxUnitLevelFielded { get; set; }
+    public int EliminationOrder { get; set; }
+    public bool EliminatedByTide { get; set; }
 }
 
 /// <summary>A raider at sea: coord + unit level. Used by
